@@ -1,16 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import {
-  Camera,
-  useCameraPermission,
-  useFrameOutput,
-  type CameraRef,
-} from 'react-native-vision-camera';
+import { Camera, useCameraPermission, useFrameOutput } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { getCardById, type CardDefinition } from '../../catalog/cards';
-import type { Quadrilateral, RecognitionResult } from '../../core/vision/types';
+import type { Point, Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
   DETECTOR_HEIGHT,
   DETECTOR_WIDTH,
@@ -30,12 +25,34 @@ type ViewDetection = {
   readonly diagnostics: OrbRecognitionDiagnostics;
 };
 
+type PreviewSize = {
+  readonly width: number;
+  readonly height: number;
+};
+
+function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
+  // Both the GPU Resizer and Camera preview use a centered `cover` transform.
+  // The detector image is upright 240x320, so mapping that image into the
+  // measured preview bounds gives stable overlay coordinates without another
+  // camera/sensor coordinate conversion layer.
+  const scale = Math.max(preview.width / DETECTOR_WIDTH, preview.height / DETECTOR_HEIGHT);
+  const scaledWidth = DETECTOR_WIDTH * scale;
+  const scaledHeight = DETECTOR_HEIGHT * scale;
+  const cropX = (scaledWidth - preview.width) / 2;
+  const cropY = (scaledHeight - preview.height) / 2;
+
+  return {
+    x: point.x * scale - cropX,
+    y: point.y * scale - cropY,
+  };
+}
+
 export function CameraScreen() {
-  const cameraRef = useRef<CameraRef>(null);
   const { hasPermission, requestPermission } = useCameraPermission();
   const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
   const [detections, setDetections] = useState<ViewDetection[]>([]);
   const [detectorError, setDetectorError] = useState<string | null>(null);
+  const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const { resizer, error: resizerError } = useResizer({
     width: DETECTOR_WIDTH,
     height: DETECTOR_HEIGHT,
@@ -57,19 +74,18 @@ export function CameraScreen() {
     }
   }, [selectedCard]);
 
-  const showDetections = useCallback((cameraDetections: RecognizedCardCandidate[]) => {
-    const camera = cameraRef.current;
-    if (camera === null) {
-      return;
-    }
+  const showDetections = useCallback(
+    (cameraDetections: RecognizedCardCandidate[]) => {
+      if (previewSize === null) {
+        return;
+      }
 
-    try {
       const viewDetections = cameraDetections.map((detection): ViewDetection => ({
         corners: [
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[0]),
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[1]),
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[2]),
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[3]),
+          mapDetectorPointToPreview(detection.detectorCorners[0], previewSize),
+          mapDetectorPointToPreview(detection.detectorCorners[1], previewSize),
+          mapDetectorPointToPreview(detection.detectorCorners[2], previewSize),
+          mapDetectorPointToPreview(detection.detectorCorners[3], previewSize),
         ],
         recognition: detection.recognition,
         diagnostics: detection.diagnostics,
@@ -81,10 +97,9 @@ export function CameraScreen() {
         current.length === 0 && viewDetections.length === 0 ? current : viewDetections
       );
       setDetectorError(null);
-    } catch {
-      // Preview conversion can briefly fail while the native preview is mounting.
-    }
-  }, []);
+    },
+    [previewSize]
+  );
 
   const showDetectorError = useCallback((message: string) => {
     setDetectorError((current) => (current === message ? current : message));
@@ -93,15 +108,11 @@ export function CameraScreen() {
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
-    // The camera now negotiates a small CV stream up front instead of producing
-    // 480x640 buffers just to resize them again. This is intentionally separate
-    // from the full-screen preview resolution.
     targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
     enablePreviewSizedOutputBuffers: true,
-    // Kept on for this first device-tuning pass so detector coordinates map
-    // directly back to Frame coordinates. Once geometry is verified we can let
-    // the GPU Resizer handle rotation and remove this extra camera-side work.
-    enablePhysicalBufferRotation: true,
+    // The GPU Resizer automatically counter-rotates Frames to upright and is
+    // faster at doing so than physical Camera buffer rotation.
+    enablePhysicalBufferRotation: false,
     dropFramesWhileBusy: true,
     onFrame(frame) {
       'worklet';
@@ -112,8 +123,17 @@ export function CameraScreen() {
       }
 
       let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
+      let frameDisposed = false;
       try {
         candidates = detectNormalizedCardCandidates(frame, resizer);
+
+        // ORB is much more expensive than contour detection. The normalized
+        // candidate Mats no longer depend on the original Camera Frame, so free
+        // that scarce buffer before starting feature matching. Holding Frames
+        // during ORB exhausts VisionCamera's buffer pool and freezes preview.
+        frame.dispose();
+        frameDisposed = true;
+
         const recognized = recognizeCardCandidatesWithOrb(candidates);
         scheduleOnRN(showDetections, recognized);
       } catch (error) {
@@ -122,7 +142,9 @@ export function CameraScreen() {
         for (const candidate of candidates) {
           candidate.normalizedImage.release();
         }
-        frame.dispose();
+        if (!frameDisposed) {
+          frame.dispose();
+        }
       }
     },
   });
@@ -148,9 +170,16 @@ export function CameraScreen() {
   ).length;
 
   return (
-    <View style={styles.container}>
+    <View
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setPreviewSize((current) =>
+          current?.width === width && current.height === height ? current : { width, height }
+        );
+      }}
+      style={styles.container}
+    >
       <Camera
-        ref={cameraRef}
         device="back"
         isActive={selectedCard === null}
         orientationSource="interface"
@@ -181,7 +210,9 @@ export function CameraScreen() {
         <Text style={styles.debugText}>
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
-        <Text style={styles.debugSubtext}>REAL IDENTIFICATION · CV 240×320</Text>
+        <Text style={styles.debugSubtext}>
+          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT}
+        </Text>
       </View>
 
       {visibleError ? (
