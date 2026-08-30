@@ -40,19 +40,12 @@ type ScoredQuadrilateral = {
 };
 
 /**
- * Infrastructure-only representation. The normalized Mat intentionally never
- * crosses into core/UI; it is consumed by the recognizer on the same CV
- * worklet and must be released by the caller.
- *
- * detectorCorners are kept as well as cameraCorners. The detector image is
- * already upright (Resizer handles orientation), so the UI can map these
- * coordinates to the portrait preview using the same centered `cover` math.
- * This avoids relying on an additional Camera-space conversion for the MVP
- * overlay while we tune physical-device geometry.
+ * Infrastructure-only representation. `detectorCorners` are coordinates in
+ * the upright 240x320 image produced by VisionCamera Resizer. The normalized
+ * Mat stays on the CV worklet and is consumed by ORB before being released.
  */
 export type OpenCvCardCandidate = {
   detectorCorners: Quadrilateral;
-  cameraCorners: Quadrilateral;
   normalizedImage: Mat;
 };
 
@@ -84,21 +77,6 @@ function orderClockwise(points: readonly Point[]): Quadrilateral {
   ];
 }
 
-function mapResizedPointToFrame(point: Point, frameWidth: number, frameHeight: number): Point {
-  'worklet';
-
-  const scale = Math.max(DETECTOR_WIDTH / frameWidth, DETECTOR_HEIGHT / frameHeight);
-  const scaledWidth = frameWidth * scale;
-  const scaledHeight = frameHeight * scale;
-  const cropX = (scaledWidth - DETECTOR_WIDTH) / 2;
-  const cropY = (scaledHeight - DETECTOR_HEIGHT) / 2;
-
-  return {
-    x: (point.x + cropX) / scale,
-    y: (point.y + cropY) / scale,
-  };
-}
-
 function overlapsExisting(candidate: ScoredQuadrilateral, accepted: readonly ScoredQuadrilateral[]): boolean {
   'worklet';
 
@@ -109,26 +87,6 @@ function overlapsExisting(candidate: ScoredQuadrilateral, accepted: readonly Sco
     const referenceSize = Math.min(candidate.width, candidate.height, other.width, other.height);
     return distanceSquared < referenceSize * referenceSize * 0.16;
   });
-}
-
-function toCameraCorners(corners: Quadrilateral, frame: Frame): Quadrilateral {
-  'worklet';
-
-  const p0 = mapResizedPointToFrame(corners[0], frame.width, frame.height);
-  const p1 = mapResizedPointToFrame(corners[1], frame.width, frame.height);
-  const p2 = mapResizedPointToFrame(corners[2], frame.width, frame.height);
-  const p3 = mapResizedPointToFrame(corners[3], frame.width, frame.height);
-  const c0 = frame.convertFramePointToCameraPoint(p0);
-  const c1 = frame.convertFramePointToCameraPoint(p1);
-  const c2 = frame.convertFramePointToCameraPoint(p2);
-  const c3 = frame.convertFramePointToCameraPoint(p3);
-
-  return [
-    { x: c0.x, y: c0.y },
-    { x: c1.x, y: c1.y },
-    { x: c2.x, y: c2.y },
-    { x: c3.x, y: c3.y },
-  ];
 }
 
 function approximateQuadrilateral(contour: PointVector, perimeter: number): PointVector | null {
@@ -149,10 +107,8 @@ function approximateQuadrilateral(contour: PointVector, perimeter: number): Poin
 /**
  * Detects cards and perspective-normalizes each accepted candidate.
  *
- * Canny edges are morphologically closed before contour extraction. Physical
- * cards often have tiny breaks in their outer edge because of blur, glare or
- * print texture; without closing those gaps findContours sees only short edge
- * fragments and never produces the card outline.
+ * VisionCamera Resizer automatically counter-rotates/mirrors the source Frame,
+ * so all returned geometry is in one stable upright detector coordinate space.
  */
 export function detectNormalizedCardCandidates(
   frame: Frame,
@@ -252,7 +208,6 @@ export function detectNormalizedCardCandidates(
         for (const candidate of accepted) {
           normalizedCandidates.push({
             detectorCorners: candidate.corners,
-            cameraCorners: toCameraCorners(candidate.corners, frame),
             normalizedImage: normalizeCardPerspective(input, candidate.corners),
           });
         }
@@ -284,7 +239,7 @@ export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadri
 
   const candidates = detectNormalizedCardCandidates(frame, resizer);
   try {
-    return candidates.map((candidate) => candidate.cameraCorners);
+    return candidates.map((candidate) => candidate.detectorCorners);
   } finally {
     for (const candidate of candidates) {
       candidate.normalizedImage.release();
