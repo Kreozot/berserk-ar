@@ -24,8 +24,6 @@ const ORB_FAST_THRESHOLD = 10;
 
 const LOWE_RATIO = 0.75;
 
-// Conservative prototype thresholds. These deliberately prefer UNKNOWN until
-// we tune them against photos/video of physical cards and negative objects.
 const MIN_QUERY_DESCRIPTORS = 45;
 const MIN_GOOD_MATCHES = 28;
 const MIN_GOOD_MATCH_RATIO = 0.09;
@@ -56,6 +54,16 @@ type ReferenceMat = {
 type RankedReference = {
   readonly cardId: string;
   readonly goodMatches: number;
+};
+
+type OrbRuntimeCache = {
+  readonly orb: ORB;
+  readonly matcher: BFMatcher;
+  readonly references: readonly ReferenceMat[];
+};
+
+type WorkletGlobal = typeof globalThis & {
+  __berserkOrbRuntimeCache?: OrbRuntimeCache;
 };
 
 function clamp01(value: number): number {
@@ -91,6 +99,28 @@ function createReferenceMats(): ReferenceMat[] {
       new Uint8Array(reference.data)
     ),
   }));
+}
+
+function getOrbRuntimeCache(): OrbRuntimeCache {
+  'worklet';
+
+  // Frame Output calls run in one persistent worklet runtime. Rebuilding the
+  // ORB object, BFMatcher and 19 native reference Mats for every processed frame
+  // adds a large avoidable pause. Keep them alive for the lifetime of that
+  // runtime; they are reclaimed when the runtime itself is destroyed.
+  const scope = globalThis as WorkletGlobal;
+  const cached = scope.__berserkOrbRuntimeCache;
+  if (cached != null) {
+    return cached;
+  }
+
+  const created: OrbRuntimeCache = {
+    orb: createOrb(),
+    matcher: OpenCV.BFMatcher_create(NormTypes.NORM_HAMMING, false),
+    references: createReferenceMats(),
+  };
+  scope.__berserkOrbRuntimeCache = created;
+  return created;
 }
 
 function countGoodMatches(
@@ -209,9 +239,8 @@ function recognizeOne(
 }
 
 /**
- * Recognizes every normalized candidate while sharing one ORB instance,
- * matcher and reference matrices for the whole processed camera frame.
- * All native OpenCV objects are released before returning to React Native.
+ * Recognizes every normalized candidate using an ORB/matcher/reference cache
+ * that persists for the lifetime of the Frame Output worklet runtime.
  */
 export function recognizeCardCandidatesWithOrb(
   candidates: readonly OpenCvCardCandidate[]
@@ -222,29 +251,19 @@ export function recognizeCardCandidatesWithOrb(
     return [];
   }
 
-  const orb = createOrb();
-  const matcher = OpenCV.BFMatcher_create(NormTypes.NORM_HAMMING, false);
-  const references = createReferenceMats();
+  const { orb, matcher, references } = getOrbRuntimeCache();
 
-  try {
-    return candidates.map((candidate) => {
-      const { recognition, diagnostics } = recognizeOne(
-        candidate.normalizedImage,
-        orb,
-        matcher,
-        references
-      );
-      return {
-        detectorCorners: candidate.detectorCorners,
-        recognition,
-        diagnostics,
-      };
-    });
-  } finally {
-    for (const reference of references) {
-      reference.descriptors.release();
-    }
-    matcher.release();
-    orb.release();
-  }
+  return candidates.map((candidate) => {
+    const { recognition, diagnostics } = recognizeOne(
+      candidate.normalizedImage,
+      orb,
+      matcher,
+      references
+    );
+    return {
+      detectorCorners: candidate.detectorCorners,
+      recognition,
+      diagnostics,
+    };
+  });
 }
