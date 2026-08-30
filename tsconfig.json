@@ -3,11 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
-    "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "resolveJsonModule": true
   },
   "include": [
     "index.ts",
