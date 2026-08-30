@@ -2,10 +2,13 @@ import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
 
 import type { CardDefinition } from '../../catalog/cards';
 import type { Point, Quadrilateral } from '../../core/vision/types';
+import type { OrbRecognitionDiagnostics } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 
 type Props = {
-  card: CardDefinition;
+  card: CardDefinition | null;
+  confidence: number;
   corners: Quadrilateral;
+  diagnostics: OrbRecognitionDiagnostics;
   onPress: (card: CardDefinition) => void;
 };
 
@@ -27,13 +30,23 @@ function getLineStyle(start: Point, end: Point): ViewStyle {
   };
 }
 
-export function DetectedCardOverlay({ card, corners, onPress }: Props) {
+export function DetectedCardOverlay({
+  card,
+  confidence,
+  corners,
+  diagnostics,
+  onPress,
+}: Props) {
   const xs = corners.map((point) => point.x);
   const ys = corners.map((point) => point.y);
   const left = Math.min(...xs);
   const top = Math.min(...ys);
   const right = Math.max(...xs);
   const bottom = Math.max(...ys);
+  const confidencePercent = Math.round(confidence * 100);
+  const label = card
+    ? `${card.nameRu} · ${confidencePercent}%`
+    : `UNKNOWN · ${diagnostics.bestGoodMatches}/${diagnostics.secondBestGoodMatches}`;
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -43,9 +56,14 @@ export function DetectedCardOverlay({ card, corners, onPress }: Props) {
       })}
 
       <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Open ${card.nameRu}`}
-        onPress={() => onPress(card)}
+        accessibilityRole={card ? 'button' : undefined}
+        accessibilityLabel={card ? `Open ${card.nameRu}` : 'Unrecognized card'}
+        disabled={card === null}
+        onPress={() => {
+          if (card) {
+            onPress(card);
+          }
+        }}
         style={[
           styles.hitArea,
           {
@@ -56,7 +74,7 @@ export function DetectedCardOverlay({ card, corners, onPress }: Props) {
           },
         ]}
       >
-        <Text style={styles.label}>{card.nameRu} · mock ID</Text>
+        <Text style={styles.label}>{label}</Text>
       </Pressable>
     </View>
   );
@@ -75,7 +93,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     bottom: -28,
-    maxWidth: 220,
+    maxWidth: 240,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
