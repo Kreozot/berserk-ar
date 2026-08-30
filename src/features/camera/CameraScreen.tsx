@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
 import { Camera, useCameraPermission, useFrameOutput } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -30,23 +30,10 @@ type PreviewSize = {
   readonly height: number;
 };
 
-type CalibrationPoint = {
-  readonly label: string;
-  readonly point: Point;
-};
-
-const DEBUG_CALIBRATION_POINTS: readonly CalibrationPoint[] = [
-  { label: 'D-TL', point: { x: DETECTOR_WIDTH * 0.25, y: DETECTOR_HEIGHT * 0.25 } },
-  { label: 'D-TR', point: { x: DETECTOR_WIDTH * 0.75, y: DETECTOR_HEIGHT * 0.25 } },
-  { label: 'D-BR', point: { x: DETECTOR_WIDTH * 0.75, y: DETECTOR_HEIGHT * 0.75 } },
-  { label: 'D-BL', point: { x: DETECTOR_WIDTH * 0.25, y: DETECTOR_HEIGHT * 0.75 } },
-];
-
 function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
-  // Device testing shows the upright detector image is 180° opposite to the
-  // displayed back-camera preview: a physical bottom-left card was reported at
-  // detector top-right, and vice versa. Rotate detector coordinates around the
-  // image center before applying the same centered `cover` transform as preview.
+  // Device calibration showed the detector image is 180° opposite to the
+  // displayed back-camera preview. Rotate around the detector center, then
+  // apply the same centered `cover` transform used by the preview.
   const rotatedPoint = {
     x: DETECTOR_WIDTH - point.x,
     y: DETECTOR_HEIGHT - point.y,
@@ -69,7 +56,9 @@ export function CameraScreen() {
   const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
   const [detections, setDetections] = useState<ViewDetection[]>([]);
   const [detectorError, setDetectorError] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const { resizer, error: resizerError } = useResizer({
     width: DETECTOR_WIDTH,
     height: DETECTOR_HEIGHT,
@@ -84,6 +73,17 @@ export function CameraScreen() {
       void requestPermission();
     }
   }, [hasPermission, requestPermission]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      setAppState(nextState);
+      if (nextState !== 'active') {
+        setDetections([]);
+        setCameraError(null);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (selectedCard !== null) {
@@ -140,6 +140,8 @@ export function CameraScreen() {
       try {
         candidates = detectNormalizedCardCandidates(frame, resizer);
 
+        // Release the scarce Camera buffer before ORB starts. The normalized
+        // Mats are independent copies and remain valid for matching.
         frame.dispose();
         frameDisposed = true;
 
@@ -172,8 +174,9 @@ export function CameraScreen() {
     );
   }
 
+  const isCameraActive = appState === 'active' && selectedCard === null;
   const nativeError = resizerError == null ? null : String(resizerError);
-  const visibleError = nativeError ?? detectorError;
+  const visibleError = nativeError ?? detectorError ?? cameraError;
   const recognizedCount = detections.filter(
     (detection) => detection.recognition.status === 'recognized'
   ).length;
@@ -190,7 +193,14 @@ export function CameraScreen() {
     >
       <Camera
         device="back"
-        isActive={selectedCard === null}
+        isActive={isCameraActive}
+        onError={(error) => {
+          // Android may report an interruption while the app is transitioning
+          // to background. That is expected once isActive is being turned off.
+          if (appState === 'active') {
+            setCameraError(error.message);
+          }
+        }}
         orientationSource="interface"
         outputs={[frameOutput]}
         resizeMode="cover"
@@ -215,28 +225,12 @@ export function CameraScreen() {
         );
       })}
 
-      {previewSize ? (
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          {DEBUG_CALIBRATION_POINTS.map(({ label, point }) => {
-            const mapped = mapDetectorPointToPreview(point, previewSize);
-            return (
-              <View
-                key={label}
-                style={[styles.calibrationPoint, { left: mapped.x - 15, top: mapped.y - 10 }]}
-              >
-                <Text style={styles.calibrationText}>{label}</Text>
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
-
       <View pointerEvents="none" style={styles.debugBadge}>
         <Text style={styles.debugText}>
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
         <Text style={styles.debugSubtext}>
-          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · ROT180
+          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT}
         </Text>
       </View>
 
@@ -288,22 +282,6 @@ const styles = StyleSheet.create({
   permissionButtonText: {
     color: '#111111',
     fontSize: 15,
-    fontWeight: '700',
-  },
-  calibrationPoint: {
-    position: 'absolute',
-    minWidth: 30,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderWidth: 1,
-    borderColor: '#ffffff',
-  },
-  calibrationText: {
-    color: '#ffffff',
-    fontSize: 8,
     fontWeight: '700',
   },
   debugBadge: {
