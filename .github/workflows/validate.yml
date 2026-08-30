@@ -1,0 +1,30 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate Android prebuild
+        run: npx expo prebuild --platform android --no-install
