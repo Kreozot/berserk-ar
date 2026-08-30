@@ -20,23 +20,27 @@
 ## Текущий стек MVP
 
 - Expo SDK 57 / React Native 0.86;
-- React Native VisionCamera;
-- OpenCV для поиска границ карт и perspective correction (следующий этап);
+- React Native VisionCamera 5;
+- `react-native-fast-opencv` для CV-операций;
+- VisionCamera Resizer для уменьшения кадров перед OpenCV;
 - ORB для первой реализации `CardRecognizer` (следующий этап).
 
-OpenCV и ORB являются сменными infrastructure adapters. UI и camera pipeline работают через нейтральные `CardDetector` / `CardRecognizer` contracts.
+OpenCV и ORB являются сменными infrastructure adapters. OpenCV-типы не должны попадать в UI/core.
 
-## Camera MVP
+## Текущий Camera/CV flow
 
-Сейчас реализован первый UI-проход:
+На текущем этапе реализовано:
 
 1. приложение запрашивает разрешение камеры;
 2. показывает live preview задней камеры через VisionCamera;
-3. поверх камеры отображается **mock**-рамка карты `Огнегривый`;
-4. нажатие на рамку открывает локальное изображение карты на весь экран;
-5. закрытие изображения возвращает live camera preview.
+3. отдельный Frame Output получает уменьшенные кадры;
+4. тяжёлая CV-обработка выполняется на отдельном async worklet thread;
+5. OpenCV выполняет grayscale → blur → Canny → contours → quadrilateral filtering;
+6. координаты углов переводятся из Frame space в Camera space и затем в Preview space;
+7. найденные четырёхугольники рисуются поверх камеры и остаются кликабельными;
+8. нажатие открывает локальное изображение карты на весь экран.
 
-Важно: текущая рамка пока не связана с содержимым кадра. Это намеренный mock для проверки camera → overlay → tap → fullscreen flow до подключения OpenCV.
+**Идентификация карты пока mock:** любой найденный четырёхугольник подписывается как `ll-001` (`Огнегривый`). Это позволяет отдельно настроить геометрическую детекцию перед подключением ORB.
 
 ## Локальный запуск Android
 
@@ -46,8 +50,10 @@ OpenCV и ORB являются сменными infrastructure adapters. UI и c
 - Android SDK / Android Studio;
 - физическое Android-устройство или эмулятор с камерой.
 
+После изменения native dependencies обязательно пересобрать development build:
+
 ```bash
-npm install
+npm ci
 npm run prebuild
 npm run android
 ```
@@ -58,15 +64,15 @@ npm run android
 npm start
 ```
 
-VisionCamera является native dependency, поэтому обычного Expo Go недостаточно — нужен development/native build.
+VisionCamera/OpenCV являются native dependencies, поэтому обычного Expo Go недостаточно — нужен development/native build.
 
 ## Архитектура CV
 
 ```text
-Camera/UI
+Camera Frame Output
    |
    v
-CardDetector
+OpenCV shape detector
    |
    v
 PerspectiveNormalizer
