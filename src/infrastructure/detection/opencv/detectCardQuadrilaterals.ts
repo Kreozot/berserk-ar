@@ -13,6 +13,7 @@ import type { Frame } from 'react-native-vision-camera';
 import type { Resizer } from 'react-native-vision-camera-resizer';
 
 import type { Point, Quadrilateral } from '../../../core/vision/types';
+import { normalizeCardPerspective } from './normalizeCardPerspective';
 
 export const DETECTOR_WIDTH = 360;
 export const DETECTOR_HEIGHT = 480;
@@ -29,6 +30,16 @@ type ScoredQuadrilateral = {
   centerY: number;
   width: number;
   height: number;
+};
+
+/**
+ * Infrastructure-only representation. The normalized Mat intentionally never
+ * crosses into core/UI; it is consumed by the recognizer on the same CV
+ * worklet and must be released by the caller.
+ */
+export type OpenCvCardCandidate = {
+  cameraCorners: Quadrilateral;
+  normalizedImage: Mat;
 };
 
 function orderClockwise(points: readonly Point[]): Quadrilateral {
@@ -86,15 +97,40 @@ function overlapsExisting(candidate: ScoredQuadrilateral, accepted: readonly Sco
   });
 }
 
+function toCameraCorners(
+  corners: Quadrilateral,
+  frame: Frame
+): Quadrilateral {
+  'worklet';
+
+  const p0 = mapResizedPointToFrame(corners[0], frame.width, frame.height);
+  const p1 = mapResizedPointToFrame(corners[1], frame.width, frame.height);
+  const p2 = mapResizedPointToFrame(corners[2], frame.width, frame.height);
+  const p3 = mapResizedPointToFrame(corners[3], frame.width, frame.height);
+  const c0 = frame.convertFramePointToCameraPoint(p0);
+  const c1 = frame.convertFramePointToCameraPoint(p1);
+  const c2 = frame.convertFramePointToCameraPoint(p2);
+  const c3 = frame.convertFramePointToCameraPoint(p3);
+
+  return [
+    { x: c0.x, y: c0.y },
+    { x: c1.x, y: c1.y },
+    { x: c2.x, y: c2.y },
+    { x: c3.x, y: c3.y },
+  ];
+}
+
 /**
- * Detects card-shaped quadrilaterals on a VisionCamera worklet thread.
+ * Detects cards and perspective-normalizes each accepted candidate.
  *
- * The resizer outputs an upright 3:4 BGR image. We map the resulting points
- * back to Frame coordinates and then let VisionCamera convert them to its
- * camera coordinate system. That keeps preview crop/rotation concerns out of
- * OpenCV and the React UI.
+ * Pixel-heavy work stays entirely on the CV worklet. Only camera-space corner
+ * DTOs should be scheduled back to React Native. The caller owns every
+ * `normalizedImage` and must release it after recognition.
  */
-export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadrilateral[] {
+export function detectNormalizedCardCandidates(
+  frame: Frame,
+  resizer: Resizer
+): OpenCvCardCandidate[] {
   'worklet';
 
   const resized = resizer.resize(frame);
@@ -182,23 +218,21 @@ export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadri
         }
       }
 
-      return accepted.map((candidate) => {
-        const p0 = mapResizedPointToFrame(candidate.corners[0], frame.width, frame.height);
-        const p1 = mapResizedPointToFrame(candidate.corners[1], frame.width, frame.height);
-        const p2 = mapResizedPointToFrame(candidate.corners[2], frame.width, frame.height);
-        const p3 = mapResizedPointToFrame(candidate.corners[3], frame.width, frame.height);
-        const c0 = frame.convertFramePointToCameraPoint(p0);
-        const c1 = frame.convertFramePointToCameraPoint(p1);
-        const c2 = frame.convertFramePointToCameraPoint(p2);
-        const c3 = frame.convertFramePointToCameraPoint(p3);
-
-        return [
-          { x: c0.x, y: c0.y },
-          { x: c1.x, y: c1.y },
-          { x: c2.x, y: c2.y },
-          { x: c3.x, y: c3.y },
-        ];
-      });
+      const normalizedCandidates: OpenCvCardCandidate[] = [];
+      try {
+        for (const candidate of accepted) {
+          normalizedCandidates.push({
+            cameraCorners: toCameraCorners(candidate.corners, frame),
+            normalizedImage: normalizeCardPerspective(input, candidate.corners),
+          });
+        }
+        return normalizedCandidates;
+      } catch (error) {
+        for (const candidate of normalizedCandidates) {
+          candidate.normalizedImage.release();
+        }
+        throw error;
+      }
     } finally {
       input.release();
     }
@@ -209,5 +243,23 @@ export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadri
     blurred.release();
     gray.release();
     resized.dispose();
+  }
+}
+
+/**
+ * Geometry-only compatibility wrapper used by the current Camera UI. Once ORB
+ * recognition is connected, the camera pipeline will consume
+ * `detectNormalizedCardCandidates` directly and avoid this extra release step.
+ */
+export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadrilateral[] {
+  'worklet';
+
+  const candidates = detectNormalizedCardCandidates(frame, resizer);
+  try {
+    return candidates.map((candidate) => candidate.cameraCorners);
+  } finally {
+    for (const candidate of candidates) {
+      candidate.normalizedImage.release();
+    }
   }
 }
