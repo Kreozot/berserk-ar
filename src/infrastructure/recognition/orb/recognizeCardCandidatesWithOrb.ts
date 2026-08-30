@@ -43,6 +43,7 @@ export type OrbRecognitionDiagnostics = {
 };
 
 export type RecognizedCardCandidate = {
+  readonly detectorCorners: Quadrilateral;
   readonly cameraCorners: Quadrilateral;
   readonly recognition: RecognitionResult;
   readonly diagnostics: OrbRecognitionDiagnostics;
@@ -235,6 +236,7 @@ export function recognizeCardCandidatesWithOrb(
         references
       );
       return {
+        detectorCorners: candidate.detectorCorners,
         cameraCorners: candidate.cameraCorners,
         recognition,
         diagnostics,
