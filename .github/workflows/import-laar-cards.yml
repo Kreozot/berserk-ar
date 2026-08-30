@@ -38,12 +38,14 @@ jobs:
       - name: Commit imported images
         shell: bash
         run: |
-          if git diff --quiet -- assets/cards/legends-of-laar; then
-            echo "Images already present; nothing to commit."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add assets/cards/legends-of-laar
+
+          if git diff --cached --quiet; then
+            echo "Images already present; nothing to commit."
+            exit 0
+          fi
+
           git commit -m "data: import Legends of Laar card images"
           git push
