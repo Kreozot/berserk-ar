@@ -1,54 +1,79 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import type { CardDefinition } from '../../catalog/cards';
-
-export type OverlayRect = {
-  left: `${number}%`;
-  top: `${number}%`;
-  width: `${number}%`;
-};
+import type { Point, Quadrilateral } from '../../core/vision/types';
 
 type Props = {
   card: CardDefinition;
-  rect: OverlayRect;
+  corners: Quadrilateral;
   onPress: (card: CardDefinition) => void;
 };
 
-export function DetectedCardOverlay({ card, rect, onPress }: Props) {
+function getLineStyle(start: Point, end: Point): ViewStyle {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx);
+
+  return {
+    position: 'absolute',
+    left: start.x,
+    top: start.y - 1.5,
+    width: length,
+    height: 3,
+    transformOrigin: 'left center',
+    transform: [{ rotate: `${angle}rad` }],
+  };
+}
+
+export function DetectedCardOverlay({ card, corners, onPress }: Props) {
+  const xs = corners.map((point) => point.x);
+  const ys = corners.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const right = Math.max(...xs);
+  const bottom = Math.max(...ys);
+
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+      {corners.map((corner, index) => {
+        const next = corners[(index + 1) % corners.length];
+        return <View key={index} pointerEvents="none" style={[styles.edge, getLineStyle(corner, next)]} />;
+      })}
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Open ${card.nameRu}`}
         onPress={() => onPress(card)}
         style={[
-          styles.card,
+          styles.hitArea,
           {
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
+            left,
+            top,
+            width: Math.max(44, right - left),
+            height: Math.max(44, bottom - top),
           },
         ]}
       >
-        <Text style={styles.label}>{card.nameRu}</Text>
+        <Text style={styles.label}>{card.nameRu} · mock ID</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  edge: {
+    backgroundColor: '#ffffff',
+    borderRadius: 2,
+  },
+  hitArea: {
     position: 'absolute',
-    aspectRatio: 63 / 89,
-    borderWidth: 3,
-    borderColor: '#ffffff',
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   label: {
     position: 'absolute',
-    left: -3,
-    bottom: -30,
+    left: 0,
+    bottom: -28,
     maxWidth: 220,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -56,7 +81,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     color: '#ffffff',
     backgroundColor: 'rgba(0,0,0,0.75)',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
 });
