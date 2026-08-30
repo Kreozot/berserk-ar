@@ -8,7 +8,7 @@ on:
 jobs:
   app:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -16,6 +16,12 @@ jobs:
         with:
           node-version: 22.13.0
           cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
 
       - name: Install dependencies
         run: npm ci
@@ -26,5 +32,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Validate Android prebuild
+      - name: Generate Android project
         run: npx expo prebuild --platform android --no-install
+
+      - name: Compile Android debug app
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon -x lint -x test
