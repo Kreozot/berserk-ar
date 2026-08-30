@@ -33,10 +33,12 @@ const MIN_WINNER_MARGIN = 10;
 const MIN_WINNER_RATIO = 1.28;
 
 export type OrbRecognitionDiagnostics = {
+  readonly bestCardId: string | null;
   readonly queryDescriptors: number;
   readonly bestGoodMatches: number;
   readonly secondBestGoodMatches: number;
   readonly goodMatchRatio: number;
+  readonly winnerMargin: number;
   readonly winnerRatio: number;
 };
 
@@ -149,10 +151,12 @@ function recognizeOne(
         return {
           recognition: { status: 'unknown', confidence: 0 },
           diagnostics: {
+            bestCardId: null,
             queryDescriptors,
             bestGoodMatches: 0,
             secondBestGoodMatches: 0,
             goodMatchRatio: 0,
+            winnerMargin: 0,
             winnerRatio: 0,
           },
         };
@@ -186,10 +190,12 @@ function recognizeOne(
           ? { status: 'recognized', cardId: best.cardId, confidence }
           : { status: 'unknown', confidence },
         diagnostics: {
+          bestCardId: best.cardId,
           queryDescriptors,
           bestGoodMatches: best.goodMatches,
           secondBestGoodMatches: second.goodMatches,
           goodMatchRatio,
+          winnerMargin,
           winnerRatio,
         },
       };
