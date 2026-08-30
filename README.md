@@ -23,7 +23,7 @@
 - React Native VisionCamera 5;
 - `react-native-fast-opencv` для CV-операций;
 - VisionCamera Resizer для уменьшения кадров перед OpenCV;
-- ORB для первой реализации `CardRecognizer` (следующий этап).
+- ORB + Hamming matching для первой реализации распознавания карт.
 
 OpenCV и ORB являются сменными infrastructure adapters. OpenCV-типы не должны попадать в UI/core.
 
@@ -36,11 +36,13 @@ OpenCV и ORB являются сменными infrastructure adapters. OpenCV-
 3. отдельный Frame Output получает уменьшенные кадры;
 4. тяжёлая CV-обработка выполняется на отдельном async worklet thread;
 5. OpenCV выполняет grayscale → blur → Canny → contours → quadrilateral filtering;
-6. координаты углов переводятся из Frame space в Camera space и затем в Preview space;
-7. найденные четырёхугольники рисуются поверх камеры и остаются кликабельными;
-8. нажатие открывает локальное изображение карты на весь экран.
+6. найденный четырёхугольник приводится perspective transform к фиксированному размеру карты 252×356;
+7. ORB сравнивает нормализованную карту с 19 предвычисленными эталонами и возвращает `cardId` либо `unknown`;
+8. координаты углов переводятся из Frame space в Camera space и затем в Preview space;
+9. найденные карты рисуются поверх камеры и распознанные карты остаются кликабельными;
+10. нажатие открывает локальное изображение карты на весь экран.
 
-**Идентификация карты пока mock:** любой найденный четырёхугольник подписывается как `ll-001` (`Огнегривый`). Это позволяет отдельно настроить геометрическую детекцию перед подключением ORB.
+Текущий следующий шаг — настроить detector/recognizer thresholds на физических картах и посторонних прямоугольных объектах, затем добавить tracking и стабилизацию overlay.
 
 ## Локальный запуск Android
 
@@ -50,15 +52,24 @@ OpenCV и ORB являются сменными infrastructure adapters. OpenCV-
 - Android SDK / Android Studio;
 - физическое Android-устройство или эмулятор с камерой.
 
-После изменения native dependencies обязательно пересобрать development build:
+Первый native build:
 
 ```bash
 npm ci
-npm run prebuild
-npm run android
+npx expo prebuild --platform android --clean
+npx expo run:android --device
 ```
 
-После первого native build дальнейшую JS/TS-разработку можно запускать через:
+Папка `android/` генерируется Expo и не хранится в Git. После изменений native dependencies **или native build properties** (`minSdkVersion`, plugins и т. п.) нужно пересоздать её, иначе `expo run:android` может использовать устаревший сгенерированный Android-проект:
+
+```bash
+npx expo prebuild --platform android --clean
+npx expo run:android --device
+```
+
+Для текущего VisionCamera Resizer требуется Android `minSdkVersion 26`; он задаётся через `expo-build-properties` в `app.json`.
+
+После первого актуального native build дальнейшую JS/TS-разработку можно запускать через:
 
 ```bash
 npm start
