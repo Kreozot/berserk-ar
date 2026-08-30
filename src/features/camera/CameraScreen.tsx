@@ -30,11 +30,28 @@ type PreviewSize = {
   readonly height: number;
 };
 
+type CalibrationPoint = {
+  readonly label: string;
+  readonly point: Point;
+};
+
+const DEBUG_CALIBRATION_POINTS: readonly CalibrationPoint[] = [
+  { label: 'D-TL', point: { x: DETECTOR_WIDTH * 0.25, y: DETECTOR_HEIGHT * 0.25 } },
+  { label: 'D-TR', point: { x: DETECTOR_WIDTH * 0.75, y: DETECTOR_HEIGHT * 0.25 } },
+  { label: 'D-BR', point: { x: DETECTOR_WIDTH * 0.75, y: DETECTOR_HEIGHT * 0.75 } },
+  { label: 'D-BL', point: { x: DETECTOR_WIDTH * 0.25, y: DETECTOR_HEIGHT * 0.75 } },
+];
+
 function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
-  // Both the GPU Resizer and Camera preview use a centered `cover` transform.
-  // The detector image is upright 240x320, so mapping that image into the
-  // measured preview bounds gives stable overlay coordinates without another
-  // camera/sensor coordinate conversion layer.
+  // Device testing shows the upright detector image is 180° opposite to the
+  // displayed back-camera preview: a physical bottom-left card was reported at
+  // detector top-right, and vice versa. Rotate detector coordinates around the
+  // image center before applying the same centered `cover` transform as preview.
+  const rotatedPoint = {
+    x: DETECTOR_WIDTH - point.x,
+    y: DETECTOR_HEIGHT - point.y,
+  };
+
   const scale = Math.max(preview.width / DETECTOR_WIDTH, preview.height / DETECTOR_HEIGHT);
   const scaledWidth = DETECTOR_WIDTH * scale;
   const scaledHeight = DETECTOR_HEIGHT * scale;
@@ -42,8 +59,8 @@ function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
   const cropY = (scaledHeight - preview.height) / 2;
 
   return {
-    x: point.x * scale - cropX,
-    y: point.y * scale - cropY,
+    x: rotatedPoint.x * scale - cropX,
+    y: rotatedPoint.y * scale - cropY,
   };
 }
 
@@ -91,8 +108,6 @@ export function CameraScreen() {
         diagnostics: detection.diagnostics,
       }));
 
-      // Empty CV results are very common. Avoid forcing a React render on every
-      // camera frame when the UI is already empty.
       setDetections((current) =>
         current.length === 0 && viewDetections.length === 0 ? current : viewDetections
       );
@@ -110,8 +125,6 @@ export function CameraScreen() {
     pixelFormat: 'yuv',
     targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
     enablePreviewSizedOutputBuffers: true,
-    // The GPU Resizer automatically counter-rotates Frames to upright and is
-    // faster at doing so than physical Camera buffer rotation.
     enablePhysicalBufferRotation: false,
     dropFramesWhileBusy: true,
     onFrame(frame) {
@@ -127,10 +140,6 @@ export function CameraScreen() {
       try {
         candidates = detectNormalizedCardCandidates(frame, resizer);
 
-        // ORB is much more expensive than contour detection. The normalized
-        // candidate Mats no longer depend on the original Camera Frame, so free
-        // that scarce buffer before starting feature matching. Holding Frames
-        // during ORB exhausts VisionCamera's buffer pool and freezes preview.
         frame.dispose();
         frameDisposed = true;
 
@@ -206,12 +215,28 @@ export function CameraScreen() {
         );
       })}
 
+      {previewSize ? (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          {DEBUG_CALIBRATION_POINTS.map(({ label, point }) => {
+            const mapped = mapDetectorPointToPreview(point, previewSize);
+            return (
+              <View
+                key={label}
+                style={[styles.calibrationPoint, { left: mapped.x - 15, top: mapped.y - 10 }]}
+              >
+                <Text style={styles.calibrationText}>{label}</Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
       <View pointerEvents="none" style={styles.debugBadge}>
         <Text style={styles.debugText}>
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
         <Text style={styles.debugSubtext}>
-          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT}
+          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · ROT180
         </Text>
       </View>
 
@@ -263,6 +288,22 @@ const styles = StyleSheet.create({
   permissionButtonText: {
     color: '#111111',
     fontSize: 15,
+    fontWeight: '700',
+  },
+  calibrationPoint: {
+    position: 'absolute',
+    minWidth: 30,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+  },
+  calibrationText: {
+    color: '#ffffff',
+    fontSize: 8,
     fontWeight: '700',
   },
   debugBadge: {
