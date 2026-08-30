@@ -11,22 +11,31 @@ import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { getCardById, type CardDefinition } from '../../catalog/cards';
-import type { Quadrilateral } from '../../core/vision/types';
+import type { Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
   DETECTOR_HEIGHT,
   DETECTOR_WIDTH,
-  detectCardQuadrilaterals,
+  detectNormalizedCardCandidates,
 } from '../../infrastructure/detection/opencv/detectCardQuadrilaterals';
+import {
+  recognizeCardCandidatesWithOrb,
+  type OrbRecognitionDiagnostics,
+  type RecognizedCardCandidate,
+} from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { CardModal } from '../card/CardModal';
 import { DetectedCardOverlay } from './DetectedCardOverlay';
 
-const mockRecognizedCard = getCardById('ll-001');
+type ViewDetection = {
+  readonly corners: Quadrilateral;
+  readonly recognition: RecognitionResult;
+  readonly diagnostics: OrbRecognitionDiagnostics;
+};
 
 export function CameraScreen() {
   const cameraRef = useRef<CameraRef>(null);
   const { hasPermission, requestPermission } = useCameraPermission();
   const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
-  const [detectedCards, setDetectedCards] = useState<Quadrilateral[]>([]);
+  const [detections, setDetections] = useState<ViewDetection[]>([]);
   const [detectorError, setDetectorError] = useState<string | null>(null);
   const asyncRunner = useAsyncRunner();
   const { resizer, error: resizerError } = useResizer({
@@ -46,24 +55,28 @@ export function CameraScreen() {
 
   useEffect(() => {
     if (selectedCard !== null) {
-      setDetectedCards([]);
+      setDetections([]);
     }
   }, [selectedCard]);
 
-  const showDetections = useCallback((cameraQuads: Quadrilateral[]) => {
+  const showDetections = useCallback((cameraDetections: RecognizedCardCandidate[]) => {
     const camera = cameraRef.current;
     if (camera === null) {
       return;
     }
 
     try {
-      const viewQuads = cameraQuads.map((quad): Quadrilateral => [
-        camera.convertCameraPointToViewPoint(quad[0]),
-        camera.convertCameraPointToViewPoint(quad[1]),
-        camera.convertCameraPointToViewPoint(quad[2]),
-        camera.convertCameraPointToViewPoint(quad[3]),
-      ]);
-      setDetectedCards(viewQuads);
+      const viewDetections = cameraDetections.map((detection): ViewDetection => ({
+        corners: [
+          camera.convertCameraPointToViewPoint(detection.cameraCorners[0]),
+          camera.convertCameraPointToViewPoint(detection.cameraCorners[1]),
+          camera.convertCameraPointToViewPoint(detection.cameraCorners[2]),
+          camera.convertCameraPointToViewPoint(detection.cameraCorners[3]),
+        ],
+        recognition: detection.recognition,
+        diagnostics: detection.diagnostics,
+      }));
+      setDetections(viewDetections);
       setDetectorError(null);
     } catch {
       // Preview conversion can briefly fail while the native preview is mounting.
@@ -72,7 +85,7 @@ export function CameraScreen() {
 
   const showDetectorError = useCallback((message: string) => {
     setDetectorError(message);
-    setDetectedCards([]);
+    setDetections([]);
   }, []);
 
   const frameOutput = useFrameOutput({
@@ -91,12 +104,17 @@ export function CameraScreen() {
       const wasHandled = asyncRunner.runAsync(() => {
         'worklet';
 
+        let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
         try {
-          const quadrilaterals = detectCardQuadrilaterals(frame, resizer);
-          scheduleOnRN(showDetections, quadrilaterals);
+          candidates = detectNormalizedCardCandidates(frame, resizer);
+          const recognized = recognizeCardCandidatesWithOrb(candidates);
+          scheduleOnRN(showDetections, recognized);
         } catch (error) {
           scheduleOnRN(showDetectorError, String(error));
         } finally {
+          for (const candidate of candidates) {
+            candidate.normalizedImage.release();
+          }
           frame.dispose();
         }
       });
@@ -123,6 +141,9 @@ export function CameraScreen() {
 
   const nativeError = resizerError == null ? null : String(resizerError);
   const visibleError = nativeError ?? detectorError;
+  const recognizedCount = detections.filter(
+    (detection) => detection.recognition.status === 'recognized'
+  ).length;
 
   return (
     <View style={styles.container}>
@@ -136,20 +157,29 @@ export function CameraScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      {mockRecognizedCard
-        ? detectedCards.map((corners, index) => (
-            <DetectedCardOverlay
-              key={index}
-              card={mockRecognizedCard}
-              corners={corners}
-              onPress={setSelectedCard}
-            />
-          ))
-        : null}
+      {detections.map((detection, index) => {
+        const card =
+          detection.recognition.status === 'recognized'
+            ? (getCardById(detection.recognition.cardId) ?? null)
+            : null;
+
+        return (
+          <DetectedCardOverlay
+            key={index}
+            card={card}
+            confidence={detection.recognition.confidence}
+            corners={detection.corners}
+            diagnostics={detection.diagnostics}
+            onPress={setSelectedCard}
+          />
+        );
+      })}
 
       <View pointerEvents="none" style={styles.debugBadge}>
-        <Text style={styles.debugText}>OPENCV SHAPES · {detectedCards.length}</Text>
-        <Text style={styles.debugSubtext}>IDENTIFICATION: MOCK ll-001</Text>
+        <Text style={styles.debugText}>
+          OPENCV + ORB · {recognizedCount}/{detections.length}
+        </Text>
+        <Text style={styles.debugSubtext}>REAL IDENTIFICATION</Text>
       </View>
 
       {visibleError ? (
