@@ -43,8 +43,15 @@ type ScoredQuadrilateral = {
  * Infrastructure-only representation. The normalized Mat intentionally never
  * crosses into core/UI; it is consumed by the recognizer on the same CV
  * worklet and must be released by the caller.
+ *
+ * detectorCorners are kept as well as cameraCorners. The detector image is
+ * already upright (Resizer handles orientation), so the UI can map these
+ * coordinates to the portrait preview using the same centered `cover` math.
+ * This avoids relying on an additional Camera-space conversion for the MVP
+ * overlay while we tune physical-device geometry.
  */
 export type OpenCvCardCandidate = {
+  detectorCorners: Quadrilateral;
   cameraCorners: Quadrilateral;
   normalizedImage: Mat;
 };
@@ -244,6 +251,7 @@ export function detectNormalizedCardCandidates(
       try {
         for (const candidate of accepted) {
           normalizedCandidates.push({
+            detectorCorners: candidate.corners,
             cameraCorners: toCameraCorners(candidate.corners, frame),
             normalizedImage: normalizeCardPerspective(input, candidate.corners),
           });
