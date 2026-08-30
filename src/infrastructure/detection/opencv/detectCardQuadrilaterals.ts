@@ -1,6 +1,7 @@
 import {
   ColorConversionCodes,
   ContourApproximationModes,
+  DataTypes,
   Mat,
   OpenCV,
   PointVector,
@@ -55,7 +56,7 @@ function orderClockwise(points: readonly Point[]): Quadrilateral {
     ordered[(firstIndex + 1) % 4],
     ordered[(firstIndex + 2) % 4],
     ordered[(firstIndex + 3) % 4],
-  ] as Quadrilateral;
+  ];
 }
 
 function mapResizedPointToFrame(point: Point, frameWidth: number, frameHeight: number): Point {
@@ -97,9 +98,9 @@ export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadri
   'worklet';
 
   const resized = resizer.resize(frame);
-  const gray = Mat.create();
-  const blurred = Mat.create();
-  const edges = Mat.create();
+  const gray = Mat.create(0, 0, DataTypes.CV_8U);
+  const blurred = Mat.create(0, 0, DataTypes.CV_8U);
+  const edges = Mat.create(0, 0, DataTypes.CV_8U);
   const kernel = Size.create(5, 5);
   const contours = PointVectorOfVectors.create();
 
@@ -182,13 +183,21 @@ export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadri
       }
 
       return accepted.map((candidate) => {
-        const cameraCorners = candidate.corners.map((point) => {
-          const framePoint = mapResizedPointToFrame(point, frame.width, frame.height);
-          const cameraPoint = frame.convertFramePointToCameraPoint(framePoint);
-          return { x: cameraPoint.x, y: cameraPoint.y };
-        });
+        const p0 = mapResizedPointToFrame(candidate.corners[0], frame.width, frame.height);
+        const p1 = mapResizedPointToFrame(candidate.corners[1], frame.width, frame.height);
+        const p2 = mapResizedPointToFrame(candidate.corners[2], frame.width, frame.height);
+        const p3 = mapResizedPointToFrame(candidate.corners[3], frame.width, frame.height);
+        const c0 = frame.convertFramePointToCameraPoint(p0);
+        const c1 = frame.convertFramePointToCameraPoint(p1);
+        const c2 = frame.convertFramePointToCameraPoint(p2);
+        const c3 = frame.convertFramePointToCameraPoint(p3);
 
-        return cameraCorners as Quadrilateral;
+        return [
+          { x: c0.x, y: c0.y },
+          { x: c1.x, y: c1.y },
+          { x: c2.x, y: c2.y },
+          { x: c3.x, y: c3.y },
+        ];
       });
     } finally {
       input.release();
