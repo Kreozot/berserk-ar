@@ -74,7 +74,12 @@ export function CameraScreen() {
         recognition: detection.recognition,
         diagnostics: detection.diagnostics,
       }));
-      setDetections(viewDetections);
+
+      // Empty CV results are very common. Avoid forcing a React render on every
+      // camera frame when the UI is already empty.
+      setDetections((current) =>
+        current.length === 0 && viewDetections.length === 0 ? current : viewDetections
+      );
       setDetectorError(null);
     } catch {
       // Preview conversion can briefly fail while the native preview is mounting.
@@ -82,16 +87,21 @@ export function CameraScreen() {
   }, []);
 
   const showDetectorError = useCallback((message: string) => {
-    setDetectorError(message);
-    setDetections([]);
+    setDetectorError((current) => (current === message ? current : message));
+    setDetections((current) => (current.length === 0 ? current : []));
   }, []);
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
-    targetResolution: { width: 480, height: 640 },
+    // The camera now negotiates a small CV stream up front instead of producing
+    // 480x640 buffers just to resize them again. This is intentionally separate
+    // from the full-screen preview resolution.
+    targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
+    enablePreviewSizedOutputBuffers: true,
+    // Kept on for this first device-tuning pass so detector coordinates map
+    // directly back to Frame coordinates. Once geometry is verified we can let
+    // the GPU Resizer handle rotation and remove this extra camera-side work.
     enablePhysicalBufferRotation: true,
-    // The Frame Output already owns a dedicated native thread. Keeping this true
-    // prevents frames from queueing while OpenCV/ORB is processing the previous one.
     dropFramesWhileBusy: true,
     onFrame(frame) {
       'worklet';
@@ -171,7 +181,7 @@ export function CameraScreen() {
         <Text style={styles.debugText}>
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
-        <Text style={styles.debugSubtext}>REAL IDENTIFICATION</Text>
+        <Text style={styles.debugSubtext}>REAL IDENTIFICATION · CV 240×320</Text>
       </View>
 
       {visibleError ? (
