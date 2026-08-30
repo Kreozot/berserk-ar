@@ -57,9 +57,12 @@ export function CameraScreen() {
     }
 
     try {
-      const viewQuads = cameraQuads.map((quad) =>
-        quad.map((point) => camera.convertCameraPointToViewPoint(point))
-      ) as Quadrilateral[];
+      const viewQuads = cameraQuads.map((quad): Quadrilateral => [
+        camera.convertCameraPointToViewPoint(quad[0]),
+        camera.convertCameraPointToViewPoint(quad[1]),
+        camera.convertCameraPointToViewPoint(quad[2]),
+        camera.convertCameraPointToViewPoint(quad[3]),
+      ]);
       setDetectedCards(viewQuads);
       setDetectorError(null);
     } catch {
