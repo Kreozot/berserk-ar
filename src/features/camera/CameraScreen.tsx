@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Camera,
-  useAsyncRunner,
   useCameraPermission,
   useFrameOutput,
   type CameraRef,
@@ -37,7 +36,6 @@ export function CameraScreen() {
   const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
   const [detections, setDetections] = useState<ViewDetection[]>([]);
   const [detectorError, setDetectorError] = useState<string | null>(null);
-  const asyncRunner = useAsyncRunner();
   const { resizer, error: resizerError } = useResizer({
     width: DETECTOR_WIDTH,
     height: DETECTOR_HEIGHT,
@@ -92,6 +90,8 @@ export function CameraScreen() {
     pixelFormat: 'yuv',
     targetResolution: { width: 480, height: 640 },
     enablePhysicalBufferRotation: true,
+    // The Frame Output already owns a dedicated native thread. Keeping this true
+    // prevents frames from queueing while OpenCV/ORB is processing the previous one.
     dropFramesWhileBusy: true,
     onFrame(frame) {
       'worklet';
@@ -101,25 +101,17 @@ export function CameraScreen() {
         return;
       }
 
-      const wasHandled = asyncRunner.runAsync(() => {
-        'worklet';
-
-        let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
-        try {
-          candidates = detectNormalizedCardCandidates(frame, resizer);
-          const recognized = recognizeCardCandidatesWithOrb(candidates);
-          scheduleOnRN(showDetections, recognized);
-        } catch (error) {
-          scheduleOnRN(showDetectorError, String(error));
-        } finally {
-          for (const candidate of candidates) {
-            candidate.normalizedImage.release();
-          }
-          frame.dispose();
+      let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
+      try {
+        candidates = detectNormalizedCardCandidates(frame, resizer);
+        const recognized = recognizeCardCandidatesWithOrb(candidates);
+        scheduleOnRN(showDetections, recognized);
+      } catch (error) {
+        scheduleOnRN(showDetectorError, String(error));
+      } finally {
+        for (const candidate of candidates) {
+          candidate.normalizedImage.release();
         }
-      });
-
-      if (!wasHandled) {
         frame.dispose();
       }
     },
