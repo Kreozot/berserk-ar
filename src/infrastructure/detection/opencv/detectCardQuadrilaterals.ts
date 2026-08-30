@@ -50,14 +50,12 @@ function orderClockwise(points: readonly Point[]): Quadrilateral {
     }
   }
 
-  const rotated = [
+  return [
     ordered[firstIndex],
     ordered[(firstIndex + 1) % 4],
     ordered[(firstIndex + 2) % 4],
     ordered[(firstIndex + 3) % 4],
-  ];
-
-  return rotated as Quadrilateral;
+  ] as Quadrilateral;
 }
 
 function mapResizedPointToFrame(point: Point, frameWidth: number, frameHeight: number): Point {
@@ -99,7 +97,6 @@ export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadri
   'worklet';
 
   const resized = resizer.resize(frame);
-  const src = Mat.create();
   const gray = Mat.create();
   const blurred = Mat.create();
   const edges = Mat.create();
@@ -108,103 +105,100 @@ export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadri
 
   try {
     const pixels = new Uint8Array(resized.getPixelBuffer());
-    const input = Mat.createFromBuffer(
-      'uint8',
-      DETECTOR_HEIGHT,
-      DETECTOR_WIDTH,
-      3,
-      pixels
-    );
+    const input = Mat.createFromBuffer('uint8', DETECTOR_HEIGHT, DETECTOR_WIDTH, 3, pixels);
 
-    OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
-    OpenCV.GaussianBlur(gray, blurred, kernel, 0);
-    OpenCV.Canny(blurred, edges, 60, 160);
-    OpenCV.findContours(
-      edges,
-      contours,
-      RetrievalModes.RETR_EXTERNAL,
-      ContourApproximationModes.CHAIN_APPROX_SIMPLE
-    );
+    try {
+      OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
+      OpenCV.GaussianBlur(gray, blurred, kernel, 0);
+      OpenCV.Canny(blurred, edges, 60, 160);
+      OpenCV.findContours(
+        edges,
+        contours,
+        RetrievalModes.RETR_EXTERNAL,
+        ContourApproximationModes.CHAIN_APPROX_SIMPLE
+      );
 
-    const imageArea = DETECTOR_WIDTH * DETECTOR_HEIGHT;
-    const scored: ScoredQuadrilateral[] = [];
+      const imageArea = DETECTOR_WIDTH * DETECTOR_HEIGHT;
+      const scored: ScoredQuadrilateral[] = [];
 
-    for (let index = 0; index < contours.length; index += 1) {
-      const contour = contours.get(index);
-      const { value: area } = OpenCV.contourArea(contour, false);
-      const areaRatio = area / imageArea;
-      if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) {
-        continue;
-      }
-
-      const { value: perimeter } = OpenCV.arcLength(contour, true);
-      const approx = PointVector.create();
-
-      try {
-        OpenCV.approxPolyDP(contour, approx, perimeter * 0.025, true);
-        if (approx.length !== 4) {
+      for (let index = 0; index < contours.length; index += 1) {
+        const contour = contours.get(index);
+        const { value: area } = OpenCV.contourArea(contour, false);
+        const areaRatio = area / imageArea;
+        if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) {
           continue;
         }
 
-        const rect = OpenCV.boundingRect(approx);
+        const { value: perimeter } = OpenCV.arcLength(contour, true);
+        const approx = PointVector.create();
+
         try {
-          const rectArea = rect.width * rect.height;
-          if (rectArea <= 0 || area / rectArea < MIN_RECTANGULARITY) {
+          OpenCV.approxPolyDP(contour, approx, perimeter * 0.025, true);
+          if (approx.length !== 4) {
             continue;
           }
 
-          if (
-            rect.width >= DETECTOR_WIDTH * 0.96 ||
-            rect.height >= DETECTOR_HEIGHT * 0.96
-          ) {
-            continue;
-          }
+          const rect = OpenCV.boundingRect(approx);
+          try {
+            const rectArea = rect.width * rect.height;
+            if (rectArea <= 0 || area / rectArea < MIN_RECTANGULARITY) {
+              continue;
+            }
 
-          const rawPoints = approx.getAll().map((point) => ({ x: point.x, y: point.y }));
-          const corners = orderClockwise(rawPoints);
-          scored.push({
-            corners,
-            area,
-            centerX: rect.x + rect.width / 2,
-            centerY: rect.y + rect.height / 2,
-            width: rect.width,
-            height: rect.height,
-          });
+            if (
+              rect.width >= DETECTOR_WIDTH * 0.96 ||
+              rect.height >= DETECTOR_HEIGHT * 0.96
+            ) {
+              continue;
+            }
+
+            const rawPoints = approx.getAll().map((point) => ({ x: point.x, y: point.y }));
+            const corners = orderClockwise(rawPoints);
+            scored.push({
+              corners,
+              area,
+              centerX: rect.x + rect.width / 2,
+              centerY: rect.y + rect.height / 2,
+              width: rect.width,
+              height: rect.height,
+            });
+          } finally {
+            rect.release();
+          }
         } finally {
-          rect.release();
+          approx.release();
         }
-      } finally {
-        approx.release();
       }
-    }
 
-    scored.sort((a, b) => b.area - a.area);
-    const accepted: ScoredQuadrilateral[] = [];
-    for (const candidate of scored) {
-      if (!overlapsExisting(candidate, accepted)) {
-        accepted.push(candidate);
+      scored.sort((a, b) => b.area - a.area);
+      const accepted: ScoredQuadrilateral[] = [];
+      for (const candidate of scored) {
+        if (!overlapsExisting(candidate, accepted)) {
+          accepted.push(candidate);
+        }
+        if (accepted.length >= MAX_CANDIDATES) {
+          break;
+        }
       }
-      if (accepted.length >= MAX_CANDIDATES) {
-        break;
-      }
-    }
 
-    return accepted.map((candidate) => {
-      const cameraCorners = candidate.corners.map((point) => {
-        const framePoint = mapResizedPointToFrame(point, frame.width, frame.height);
-        const cameraPoint = frame.convertFramePointToCameraPoint(framePoint);
-        return { x: cameraPoint.x, y: cameraPoint.y };
+      return accepted.map((candidate) => {
+        const cameraCorners = candidate.corners.map((point) => {
+          const framePoint = mapResizedPointToFrame(point, frame.width, frame.height);
+          const cameraPoint = frame.convertFramePointToCameraPoint(framePoint);
+          return { x: cameraPoint.x, y: cameraPoint.y };
+        });
+
+        return cameraCorners as Quadrilateral;
       });
-
-      return cameraCorners as Quadrilateral;
-    });
+    } finally {
+      input.release();
+    }
   } finally {
     contours.release();
     kernel.release();
     edges.release();
     blurred.release();
     gray.release();
-    src.release();
     resized.dispose();
   }
 }
