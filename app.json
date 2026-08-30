@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Berserk AR",
+    "slug": "berserk-ar",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.kreozot.berserkar",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Berserk AR uses the camera to recognize physical Berserk cards."
+      }
+    },
+    "android": {
+      "package": "com.kreozot.berserkar",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-dev-client"
+    ]
+  }
+}
