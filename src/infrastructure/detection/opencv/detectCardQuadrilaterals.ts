@@ -3,6 +3,8 @@ import {
   ContourApproximationModes,
   DataTypes,
   Mat,
+  MorphShapes,
+  MorphTypes,
   OpenCV,
   PointVector,
   PointVectorOfVectors,
@@ -15,13 +17,18 @@ import type { Resizer } from 'react-native-vision-camera-resizer';
 import type { Point, Quadrilateral } from '../../../core/vision/types';
 import { normalizeCardPerspective } from './normalizeCardPerspective';
 
-export const DETECTOR_WIDTH = 360;
-export const DETECTOR_HEIGHT = 480;
+// Shape detection does not need recognition-quality resolution. Keeping this
+// small is important because this path runs synchronously on the Frame Output
+// worklet thread.
+export const DETECTOR_WIDTH = 240;
+export const DETECTOR_HEIGHT = 320;
 
-const MIN_AREA_RATIO = 0.025;
-const MAX_AREA_RATIO = 0.8;
-const MIN_RECTANGULARITY = 0.55;
-const MAX_CANDIDATES = 8;
+const MIN_AREA_RATIO = 0.015;
+const MAX_AREA_RATIO = 0.85;
+const MIN_RECTANGULARITY = 0.45;
+const MAX_CANDIDATES = 6;
+
+const APPROX_EPSILON_RATIOS = [0.02, 0.03, 0.04, 0.05] as const;
 
 type ScoredQuadrilateral = {
   corners: Quadrilateral;
@@ -97,10 +104,7 @@ function overlapsExisting(candidate: ScoredQuadrilateral, accepted: readonly Sco
   });
 }
 
-function toCameraCorners(
-  corners: Quadrilateral,
-  frame: Frame
-): Quadrilateral {
+function toCameraCorners(corners: Quadrilateral, frame: Frame): Quadrilateral {
   'worklet';
 
   const p0 = mapResizedPointToFrame(corners[0], frame.width, frame.height);
@@ -120,12 +124,28 @@ function toCameraCorners(
   ];
 }
 
+function approximateQuadrilateral(contour: PointVector, perimeter: number): PointVector | null {
+  'worklet';
+
+  for (const epsilonRatio of APPROX_EPSILON_RATIOS) {
+    const approx = PointVector.create();
+    OpenCV.approxPolyDP(contour, approx, perimeter * epsilonRatio, true);
+    if (approx.length === 4) {
+      return approx;
+    }
+    approx.release();
+  }
+
+  return null;
+}
+
 /**
  * Detects cards and perspective-normalizes each accepted candidate.
  *
- * Pixel-heavy work stays entirely on the CV worklet. Only camera-space corner
- * DTOs should be scheduled back to React Native. The caller owns every
- * `normalizedImage` and must release it after recognition.
+ * Canny edges are morphologically closed before contour extraction. Physical
+ * cards often have tiny breaks in their outer edge because of blur, glare or
+ * print texture; without closing those gaps findContours sees only short edge
+ * fragments and never produces the card outline.
  */
 export function detectNormalizedCardCandidates(
   frame: Frame,
@@ -137,7 +157,10 @@ export function detectNormalizedCardCandidates(
   const gray = Mat.create(0, 0, DataTypes.CV_8U);
   const blurred = Mat.create(0, 0, DataTypes.CV_8U);
   const edges = Mat.create(0, 0, DataTypes.CV_8U);
-  const kernel = Size.create(5, 5);
+  const closedEdges = Mat.create(0, 0, DataTypes.CV_8U);
+  const blurKernel = Size.create(3, 3);
+  const closeKernelSize = Size.create(5, 5);
+  const closeKernel = OpenCV.getStructuringElement(MorphShapes.MORPH_RECT, closeKernelSize);
   const contours = PointVectorOfVectors.create();
 
   try {
@@ -146,10 +169,11 @@ export function detectNormalizedCardCandidates(
 
     try {
       OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
-      OpenCV.GaussianBlur(gray, blurred, kernel, 0);
-      OpenCV.Canny(blurred, edges, 60, 160);
+      OpenCV.GaussianBlur(gray, blurred, blurKernel, 0);
+      OpenCV.Canny(blurred, edges, 40, 120);
+      OpenCV.morphologyEx(edges, closedEdges, MorphTypes.MORPH_CLOSE, closeKernel);
       OpenCV.findContours(
-        edges,
+        closedEdges,
         contours,
         RetrievalModes.RETR_EXTERNAL,
         ContourApproximationModes.CHAIN_APPROX_SIMPLE
@@ -167,14 +191,12 @@ export function detectNormalizedCardCandidates(
         }
 
         const { value: perimeter } = OpenCV.arcLength(contour, true);
-        const approx = PointVector.create();
+        const approx = approximateQuadrilateral(contour, perimeter);
+        if (approx === null) {
+          continue;
+        }
 
         try {
-          OpenCV.approxPolyDP(contour, approx, perimeter * 0.025, true);
-          if (approx.length !== 4) {
-            continue;
-          }
-
           const rect = OpenCV.boundingRect(approx);
           try {
             const rectArea = rect.width * rect.height;
@@ -183,8 +205,8 @@ export function detectNormalizedCardCandidates(
             }
 
             if (
-              rect.width >= DETECTOR_WIDTH * 0.96 ||
-              rect.height >= DETECTOR_HEIGHT * 0.96
+              rect.width >= DETECTOR_WIDTH * 0.98 ||
+              rect.height >= DETECTOR_HEIGHT * 0.98
             ) {
               continue;
             }
@@ -238,7 +260,10 @@ export function detectNormalizedCardCandidates(
     }
   } finally {
     contours.release();
-    kernel.release();
+    closeKernel.release();
+    closeKernelSize.release();
+    blurKernel.release();
+    closedEdges.release();
     edges.release();
     blurred.release();
     gray.release();
@@ -246,11 +271,6 @@ export function detectNormalizedCardCandidates(
   }
 }
 
-/**
- * Geometry-only compatibility wrapper used by the current Camera UI. Once ORB
- * recognition is connected, the camera pipeline will consume
- * `detectNormalizedCardCandidates` directly and avoid this extra release step.
- */
 export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadrilateral[] {
   'worklet';
 
