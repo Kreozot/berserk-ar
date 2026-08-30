@@ -1,0 +1,30 @@
+{
+  "id": "legends-of-laar",
+  "nameRu": "Легенды Лаара",
+  "source": {
+    "site": "ProBerserk",
+    "editionUrl": "https://www.proberserk.ru/edition/e2ba8",
+    "note": "Images are used as prototype/reference data. ProBerserk states that rights to Berserk belong to Hobby World; redistribution/licensing must be checked before public release."
+  },
+  "cards": [
+    {"number":1,"id":"ll-001","nameRu":"Огнегривый","proberserkId":"40d5a","image":"assets/cards/legends-of-laar/ll-001.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-001.jpg"},
+    {"number":2,"id":"ll-002","nameRu":"Страж Тоа-Дана","proberserkId":"d815e","image":"assets/cards/legends-of-laar/ll-002.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-002.jpg"},
+    {"number":3,"id":"ll-003","nameRu":"Лучник Дзара","proberserkId":"7707d","image":"assets/cards/legends-of-laar/ll-003.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-003.jpg"},
+    {"number":4,"id":"ll-004","nameRu":"Орк-стрелок","proberserkId":"2824a","image":"assets/cards/legends-of-laar/ll-004.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-004.jpg"},
+    {"number":5,"id":"ll-005","nameRu":"Орк-задира","proberserkId":"f4313","image":"assets/cards/legends-of-laar/ll-005.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-005.jpg"},
+    {"number":6,"id":"ll-006","nameRu":"Гном-лучник","proberserkId":"4f001","image":"assets/cards/legends-of-laar/ll-006.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-006.jpg"},
+    {"number":7,"id":"ll-007","nameRu":"Грозовой маг","proberserkId":"f5b38","image":"assets/cards/legends-of-laar/ll-007.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-007.jpg"},
+    {"number":8,"id":"ll-008","nameRu":"Железный голем","proberserkId":"6f81e","image":"assets/cards/legends-of-laar/ll-008.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-008.jpg"},
+    {"number":9,"id":"ll-009","nameRu":"Дитя вьюги","proberserkId":"d583d","image":"assets/cards/legends-of-laar/ll-009.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-009.jpg"},
+    {"number":10,"id":"ll-010","nameRu":"Цвар","proberserkId":"4e1a2","image":"assets/cards/legends-of-laar/ll-010.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-010.jpg"},
+    {"number":11,"id":"ll-011","nameRu":"Торговка эликсирами","proberserkId":"cc5f7","image":"assets/cards/legends-of-laar/ll-011.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-011.jpg"},
+    {"number":12,"id":"ll-012","nameRu":"Эльфийский следопыт","proberserkId":"4c336","image":"assets/cards/legends-of-laar/ll-012.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-012.jpg"},
+    {"number":13,"id":"ll-013","nameRu":"Боров Лихолесья","proberserkId":"c3b24","image":"assets/cards/legends-of-laar/ll-013.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-013.jpg"},
+    {"number":14,"id":"ll-014","nameRu":"Ольгерд","proberserkId":"c769b","image":"assets/cards/legends-of-laar/ll-014.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-014.jpg"},
+    {"number":15,"id":"ll-015","nameRu":"Большой кулак","proberserkId":"a385e","image":"assets/cards/legends-of-laar/ll-015.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-015.jpg"},
+    {"number":16,"id":"ll-016","nameRu":"Карга","proberserkId":"22ced","image":"assets/cards/legends-of-laar/ll-016.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-016.jpg"},
+    {"number":17,"id":"ll-017","nameRu":"Раб клинка","proberserkId":"07a3f","image":"assets/cards/legends-of-laar/ll-017.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-017.jpg"},
+    {"number":18,"id":"ll-018","nameRu":"Тролль-воин","proberserkId":"5eb2f","image":"assets/cards/legends-of-laar/ll-018.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-018.jpg"},
+    {"number":19,"id":"ll-019","nameRu":"Летописец","proberserkId":"cc27d","image":"assets/cards/legends-of-laar/ll-019.jpg","sourceImage":"https://www.proberserk.ru/images/cards/ll/ll-019.jpg"}
+  ]
+}
