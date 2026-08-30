@@ -14,14 +14,15 @@ function getLineStyle(start: Point, end: Point): ViewStyle {
   const dy = end.y - start.y;
   const length = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx);
+  const centerX = (start.x + end.x) / 2;
+  const centerY = (start.y + end.y) / 2;
 
   return {
     position: 'absolute',
-    left: start.x,
-    top: start.y - 1.5,
+    left: centerX - length / 2,
+    top: centerY - 1.5,
     width: length,
     height: 3,
-    transformOrigin: 'left center',
     transform: [{ rotate: `${angle}rad` }],
   };
 }
