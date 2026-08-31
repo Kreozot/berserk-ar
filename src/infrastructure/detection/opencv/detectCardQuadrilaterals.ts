@@ -29,6 +29,8 @@ const MIN_RECTANGULARITY = 0.42;
 const MIN_CARD_ASPECT = 0.42;
 const MAX_CARD_ASPECT = 0.92;
 const MAX_CANDIDATES = 18;
+const MIN_QUAD_EDGE = 4;
+const MIN_QUAD_AREA = 40;
 
 const APPROX_EPSILON_RATIOS = [0.018, 0.025, 0.035, 0.05] as const;
 
@@ -97,6 +99,58 @@ function scaleCorners(corners: Quadrilateral, scaleX: number, scaleY: number): Q
   ];
 }
 
+function polygonArea(corners: Quadrilateral): number {
+  'worklet';
+
+  let twiceArea = 0;
+  for (let index = 0; index < 4; index += 1) {
+    const current = corners[index];
+    const next = corners[(index + 1) % 4];
+    twiceArea += current.x * next.y - next.x * current.y;
+  }
+  return Math.abs(twiceArea) / 2;
+}
+
+function isConvex(corners: Quadrilateral): boolean {
+  'worklet';
+
+  let sign = 0;
+  for (let index = 0; index < 4; index += 1) {
+    const a = corners[index];
+    const b = corners[(index + 1) % 4];
+    const c = corners[(index + 2) % 4];
+    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (Math.abs(cross) < 0.001) {
+      return false;
+    }
+    const currentSign = cross > 0 ? 1 : -1;
+    if (sign === 0) {
+      sign = currentSign;
+    } else if (sign !== currentSign) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isStableQuad(corners: Quadrilateral): boolean {
+  'worklet';
+
+  for (const point of corners) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      return false;
+    }
+  }
+
+  for (let index = 0; index < 4; index += 1) {
+    if (distance(corners[index], corners[(index + 1) % 4]) < MIN_QUAD_EDGE) {
+      return false;
+    }
+  }
+
+  return polygonArea(corners) >= MIN_QUAD_AREA && isConvex(corners);
+}
+
 function getCardAspect(corners: Quadrilateral): number {
   'worklet';
 
@@ -134,6 +188,23 @@ function approximateQuadrilateral(contour: PointVector, perimeter: number): Poin
   return null;
 }
 
+function readQuadrilateral(approx: PointVector): Quadrilateral {
+  'worklet';
+
+  const result: Point[] = [];
+  for (let index = 0; index < 4; index += 1) {
+    const point = approx.get(index);
+    try {
+      result.push({ x: point.x, y: point.y });
+    } finally {
+      // PointVector.get() returns a separate native host object copy.
+      point.release();
+    }
+  }
+
+  return orderClockwise(result);
+}
+
 function collectQuadrilaterals(
   contours: PointVectorOfVectors,
   imageArea: number,
@@ -142,53 +213,61 @@ function collectQuadrilaterals(
   'worklet';
 
   for (let index = 0; index < contours.length; index += 1) {
+    // PointVectorOfVectors.get() returns a separate native host object copy.
+    // Explicitly release it every iteration; RETR_LIST can produce hundreds.
     const contour = contours.get(index);
-    const { value: area } = OpenCV.contourArea(contour, false);
-    const areaRatio = area / imageArea;
-    if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) {
-      continue;
-    }
-
-    const { value: perimeter } = OpenCV.arcLength(contour, true);
-    const approx = approximateQuadrilateral(contour, perimeter);
-    if (approx === null) {
-      continue;
-    }
-
     try {
-      const rect = OpenCV.boundingRect(approx);
+      const { value: area } = OpenCV.contourArea(contour, false);
+      const areaRatio = area / imageArea;
+      if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) {
+        continue;
+      }
+
+      const { value: perimeter } = OpenCV.arcLength(contour, true);
+      const approx = approximateQuadrilateral(contour, perimeter);
+      if (approx === null) {
+        continue;
+      }
+
       try {
-        const rectArea = rect.width * rect.height;
-        if (rectArea <= 0 || area / rectArea < MIN_RECTANGULARITY) {
-          continue;
+        const rect = OpenCV.boundingRect(approx);
+        try {
+          const rectArea = rect.width * rect.height;
+          if (rectArea <= 0 || area / rectArea < MIN_RECTANGULARITY) {
+            continue;
+          }
+
+          if (rect.width >= DETECTOR_WIDTH * 0.98 || rect.height >= DETECTOR_HEIGHT * 0.98) {
+            continue;
+          }
+
+          const corners = readQuadrilateral(approx);
+          if (!isStableQuad(corners)) {
+            continue;
+          }
+
+          const cardAspect = getCardAspect(corners);
+          if (cardAspect < MIN_CARD_ASPECT || cardAspect > MAX_CARD_ASPECT) {
+            continue;
+          }
+
+          scored.push({
+            corners,
+            area,
+            centerX: rect.x + rect.width / 2,
+            centerY: rect.y + rect.height / 2,
+            width: rect.width,
+            height: rect.height,
+            cardAspect,
+          });
+        } finally {
+          rect.release();
         }
-
-        if (rect.width >= DETECTOR_WIDTH * 0.98 || rect.height >= DETECTOR_HEIGHT * 0.98) {
-          continue;
-        }
-
-        const rawPoints = approx.getAll().map((point) => ({ x: point.x, y: point.y }));
-        const corners = orderClockwise(rawPoints);
-        const cardAspect = getCardAspect(corners);
-
-        if (cardAspect < MIN_CARD_ASPECT || cardAspect > MAX_CARD_ASPECT) {
-          continue;
-        }
-
-        scored.push({
-          corners,
-          area,
-          centerX: rect.x + rect.width / 2,
-          centerY: rect.y + rect.height / 2,
-          width: rect.width,
-          height: rect.height,
-          cardAspect,
-        });
       } finally {
-        rect.release();
+        approx.release();
       }
     } finally {
-      approx.release();
+      contour.release();
     }
   }
 }
