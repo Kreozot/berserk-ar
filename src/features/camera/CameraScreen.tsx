@@ -9,6 +9,8 @@ import type { Point, Quadrilateral, RecognitionResult } from '../../core/vision/
 import {
   DETECTOR_HEIGHT,
   DETECTOR_WIDTH,
+  RECOGNITION_HEIGHT,
+  RECOGNITION_WIDTH,
   detectNormalizedCardCandidates,
 } from '../../infrastructure/detection/opencv/detectCardQuadrilaterals';
 import {
@@ -31,9 +33,6 @@ type PreviewSize = {
 };
 
 function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
-  // Device calibration showed the detector image is 180° opposite to the
-  // displayed back-camera preview. Rotate around the detector center, then
-  // apply the same centered `cover` transform used by the preview.
   const rotatedPoint = {
     x: DETECTOR_WIDTH - point.x,
     y: DETECTOR_HEIGHT - point.y,
@@ -59,9 +58,18 @@ export function CameraScreen() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
-  const { resizer, error: resizerError } = useResizer({
+
+  const { resizer: detectorResizer, error: detectorResizerError } = useResizer({
     width: DETECTOR_WIDTH,
     height: DETECTOR_HEIGHT,
+    channelOrder: 'bgr',
+    dataType: 'uint8',
+    pixelLayout: 'interleaved',
+    scaleMode: 'cover',
+  });
+  const { resizer: recognitionResizer, error: recognitionResizerError } = useResizer({
+    width: RECOGNITION_WIDTH,
+    height: RECOGNITION_HEIGHT,
     channelOrder: 'bgr',
     dataType: 'uint8',
     pixelLayout: 'interleaved',
@@ -123,14 +131,16 @@ export function CameraScreen() {
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
-    targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
+    // Keep enough camera detail for distant-card recognition. Geometry is still
+    // downscaled to 240x320 by detectorResizer before any contour processing.
+    targetResolution: { width: RECOGNITION_WIDTH, height: RECOGNITION_HEIGHT },
     enablePreviewSizedOutputBuffers: true,
     enablePhysicalBufferRotation: false,
     dropFramesWhileBusy: true,
     onFrame(frame) {
       'worklet';
 
-      if (resizer == null) {
+      if (detectorResizer == null || recognitionResizer == null) {
         frame.dispose();
         return;
       }
@@ -138,10 +148,10 @@ export function CameraScreen() {
       let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
       let frameDisposed = false;
       try {
-        candidates = detectNormalizedCardCandidates(frame, resizer);
+        candidates = detectNormalizedCardCandidates(frame, detectorResizer, recognitionResizer);
 
-        // Release the scarce Camera buffer before ORB starts. The normalized
-        // Mats are independent copies and remain valid for matching.
+        // Both resized copies are complete now, so the scarce Camera buffer can
+        // be returned before ORB performs expensive feature matching.
         frame.dispose();
         frameDisposed = true;
 
@@ -175,7 +185,12 @@ export function CameraScreen() {
   }
 
   const isCameraActive = appState === 'active' && selectedCard === null;
-  const nativeError = resizerError == null ? null : String(resizerError);
+  const nativeError =
+    detectorResizerError != null
+      ? String(detectorResizerError)
+      : recognitionResizerError != null
+        ? String(recognitionResizerError)
+        : null;
   const visibleError = nativeError ?? detectorError ?? cameraError;
   const recognizedCount = detections.filter(
     (detection) => detection.recognition.status === 'recognized'
@@ -195,8 +210,6 @@ export function CameraScreen() {
         device="back"
         isActive={isCameraActive}
         onError={(error) => {
-          // Android may report an interruption while the app is transitioning
-          // to background. That is expected once isActive is being turned off.
           if (appState === 'active') {
             setCameraError(error.message);
           }
@@ -230,7 +243,7 @@ export function CameraScreen() {
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
         <Text style={styles.debugSubtext}>
-          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT}
+          DET {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · ORB SRC {RECOGNITION_WIDTH}×{RECOGNITION_HEIGHT}
         </Text>
       </View>
 
