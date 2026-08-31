@@ -12,6 +12,9 @@ type Props = {
   onPress: (card: CardDefinition) => void;
 };
 
+const RECOGNIZED_COLOR = '#35d06f';
+const UNKNOWN_COLOR = '#f0b429';
+
 function getLineStyle(start: Point, end: Point): ViewStyle {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -44,6 +47,8 @@ export function DetectedCardOverlay({
   const right = Math.max(...xs);
   const bottom = Math.max(...ys);
   const confidencePercent = Math.round(confidence * 100);
+  const isRecognized = card !== null;
+  const accentColor = isRecognized ? RECOGNIZED_COLOR : UNKNOWN_COLOR;
   const bestCandidate = diagnostics.bestCardId
     ? (getCardById(diagnostics.bestCardId)?.nameRu ?? diagnostics.bestCardId)
     : 'none';
@@ -62,12 +67,18 @@ export function DetectedCardOverlay({
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {corners.map((corner, index) => {
         const next = corners[(index + 1) % corners.length];
-        return <View key={index} pointerEvents="none" style={[styles.edge, getLineStyle(corner, next)]} />;
+        return (
+          <View
+            key={index}
+            pointerEvents="none"
+            style={[styles.edge, getLineStyle(corner, next), { backgroundColor: accentColor }]}
+          />
+        );
       })}
 
       <Pressable
         accessibilityRole={card ? 'button' : undefined}
-        accessibilityLabel={card ? `Open ${card.nameRu}` : 'Unrecognized card'}
+        accessibilityLabel={card ? `Open ${card.nameRu}` : 'Unrecognized rectangle'}
         disabled={card === null}
         onPress={() => {
           if (card) {
@@ -81,11 +92,14 @@ export function DetectedCardOverlay({
             top,
             width: Math.max(44, right - left),
             height: Math.max(44, bottom - top),
+            backgroundColor: isRecognized
+              ? 'rgba(53,208,111,0.04)'
+              : 'rgba(240,180,41,0.035)',
           },
         ]}
       >
-        <View style={styles.label}>
-          <Text style={styles.labelTitle}>{title}</Text>
+        <View style={[styles.label, { borderColor: accentColor }]}>
+          <Text style={[styles.labelTitle, { color: accentColor }]}>{title}</Text>
           <Text style={styles.labelMetrics}>{metrics}</Text>
         </View>
       </Pressable>
@@ -95,12 +109,10 @@ export function DetectedCardOverlay({
 
 const styles = StyleSheet.create({
   edge: {
-    backgroundColor: '#ffffff',
     borderRadius: 2,
   },
   hitArea: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   label: {
     position: 'absolute',
@@ -110,13 +122,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 6,
+    borderWidth: 1,
     overflow: 'hidden',
     backgroundColor: 'rgba(0,0,0,0.78)',
   },
   labelTitle: {
-    color: '#ffffff',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   labelMetrics: {
     marginTop: 2,
