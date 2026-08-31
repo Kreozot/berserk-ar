@@ -24,11 +24,15 @@ const ORB_FAST_THRESHOLD = 10;
 
 const LOWE_RATIO = 0.75;
 
-const MIN_QUERY_DESCRIPTORS = 45;
-const MIN_GOOD_MATCHES = 28;
-const MIN_GOOD_MATCH_RATIO = 0.09;
-const MIN_WINNER_MARGIN = 10;
-const MIN_WINNER_RATIO = 1.28;
+// Calibrated from first physical-device runs. Correct cards often produce only
+// ~20-25 good matches at table distance, but are still clearly separated from
+// the second-best reference. Random rectangles seen so far stay below 18.
+const MIN_QUERY_DESCRIPTORS = 40;
+const MIN_GOOD_MATCHES_FLOOR = 18;
+const MAX_GOOD_MATCHES_REQUIREMENT = 28;
+const MIN_GOOD_MATCH_RATIO = 0.16;
+const MIN_WINNER_MARGIN = 8;
+const MIN_WINNER_RATIO = 1.8;
 
 export type OrbRecognitionDiagnostics = {
   readonly bestCardId: string | null;
@@ -71,6 +75,14 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function requiredGoodMatches(queryDescriptors: number): number {
+  'worklet';
+  return Math.max(
+    MIN_GOOD_MATCHES_FLOOR,
+    Math.min(MAX_GOOD_MATCHES_REQUIREMENT, Math.ceil(queryDescriptors * 0.12))
+  );
+}
+
 function createOrb(): ORB {
   'worklet';
   return OpenCV.ORB_create(
@@ -104,10 +116,6 @@ function createReferenceMats(): ReferenceMat[] {
 function getOrbRuntimeCache(): OrbRuntimeCache {
   'worklet';
 
-  // Frame Output calls run in one persistent worklet runtime. Rebuilding the
-  // ORB object, BFMatcher and 19 native reference Mats for every processed frame
-  // adds a large avoidable pause. Keep them alive for the lifetime of that
-  // runtime; they are reclaimed when the runtime itself is destroyed.
   const scope = globalThis as WorkletGlobal;
   const cached = scope.__berserkOrbRuntimeCache;
   if (cached != null) {
@@ -156,10 +164,10 @@ function scoreConfidence(
 ): number {
   'worklet';
 
-  const matchStrength = clamp01(bestGoodMatches / 100);
-  const queryCoverage = clamp01(bestGoodMatches / Math.max(queryDescriptors * 0.35, 1));
-  const separation = clamp01((bestGoodMatches - secondBestGoodMatches) / 45);
-  return clamp01(matchStrength * 0.45 + queryCoverage * 0.25 + separation * 0.3);
+  const matchStrength = clamp01(bestGoodMatches / 80);
+  const queryCoverage = clamp01(bestGoodMatches / Math.max(queryDescriptors * 0.3, 1));
+  const separation = clamp01((bestGoodMatches - secondBestGoodMatches) / 35);
+  return clamp01(matchStrength * 0.4 + queryCoverage * 0.3 + separation * 0.3);
 }
 
 function recognizeOne(
@@ -210,7 +218,7 @@ function recognizeOne(
       );
 
       const recognized =
-        best.goodMatches >= MIN_GOOD_MATCHES &&
+        best.goodMatches >= requiredGoodMatches(queryDescriptors) &&
         goodMatchRatio >= MIN_GOOD_MATCH_RATIO &&
         winnerMargin >= MIN_WINNER_MARGIN &&
         winnerRatio >= MIN_WINNER_RATIO;
