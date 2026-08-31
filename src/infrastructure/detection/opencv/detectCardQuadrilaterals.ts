@@ -17,15 +17,18 @@ import type { Resizer } from 'react-native-vision-camera-resizer';
 import type { Point, Quadrilateral } from '../../../core/vision/types';
 import { normalizeCardPerspective } from './normalizeCardPerspective';
 
+// Keep contour search cheap, but preserve a higher-resolution source for ORB.
 export const DETECTOR_WIDTH = 240;
 export const DETECTOR_HEIGHT = 320;
+export const RECOGNITION_WIDTH = 480;
+export const RECOGNITION_HEIGHT = 640;
 
-const MIN_AREA_RATIO = 0.01;
+const MIN_AREA_RATIO = 0.0035;
 const MAX_AREA_RATIO = 0.72;
 const MIN_RECTANGULARITY = 0.42;
 const MIN_CARD_ASPECT = 0.42;
 const MAX_CARD_ASPECT = 0.92;
-const MAX_CANDIDATES = 6;
+const MAX_CANDIDATES = 18;
 
 const APPROX_EPSILON_RATIOS = [0.018, 0.025, 0.035, 0.05] as const;
 
@@ -40,9 +43,9 @@ type ScoredQuadrilateral = {
 };
 
 /**
- * Infrastructure-only representation. `detectorCorners` are coordinates in
- * the upright 240x320 image produced by VisionCamera Resizer. The normalized
- * Mat stays on the CV worklet and is consumed by ORB before being released.
+ * Infrastructure-only representation. `detectorCorners` stay in the upright
+ * 240x320 detector coordinate space used by the overlay. `normalizedImage` is
+ * warped from a separate 480x640 source so ORB retains detail on distant cards.
  */
 export type OpenCvCardCandidate = {
   detectorCorners: Quadrilateral;
@@ -81,6 +84,16 @@ function orderClockwise(points: readonly Point[]): Quadrilateral {
     ordered[(firstIndex + 1) % 4],
     ordered[(firstIndex + 2) % 4],
     ordered[(firstIndex + 3) % 4],
+  ];
+}
+
+function scaleCorners(corners: Quadrilateral, scaleX: number, scaleY: number): Quadrilateral {
+  'worklet';
+  return [
+    { x: corners[0].x * scaleX, y: corners[0].y * scaleY },
+    { x: corners[1].x * scaleX, y: corners[1].y * scaleY },
+    { x: corners[2].x * scaleX, y: corners[2].y * scaleY },
+    { x: corners[3].x * scaleX, y: corners[3].y * scaleY },
   ];
 }
 
@@ -158,9 +171,6 @@ function collectQuadrilaterals(
         const corners = orderClockwise(rawPoints);
         const cardAspect = getCardAspect(corners);
 
-        // A Berserk card is ~0.71 short/long. Keep generous perspective
-        // tolerance, but reject long merged contours (e.g. two neighbouring
-        // cards detected as one shape) and near-square UI/texture rectangles.
         if (cardAspect < MIN_CARD_ASPECT || cardAspect > MAX_CARD_ASPECT) {
           continue;
         }
@@ -184,20 +194,18 @@ function collectQuadrilaterals(
 }
 
 /**
- * Detects cards and perspective-normalizes each accepted candidate.
- *
- * We inspect both raw Canny edges and a lightly closed copy. Raw edges keep
- * nearby cards separate; the closed pass recovers cards whose outline has small
- * gaps from blur/glare. RETR_LIST lets us retain individual card contours even
- * when another larger contour surrounds them.
+ * Finds card geometry on a cheap 240x320 copy, then perspective-normalizes the
+ * accepted regions from a 480x640 copy of the same Frame. This keeps contour
+ * cost low while giving ORB four times as many source pixels per scene.
  */
 export function detectNormalizedCardCandidates(
   frame: Frame,
-  resizer: Resizer
+  detectorResizer: Resizer,
+  recognitionResizer: Resizer
 ): OpenCvCardCandidate[] {
   'worklet';
 
-  const resized = resizer.resize(frame);
+  const detectorResized = detectorResizer.resize(frame);
   const gray = Mat.create(0, 0, DataTypes.CV_8U);
   const blurred = Mat.create(0, 0, DataTypes.CV_8U);
   const edges = Mat.create(0, 0, DataTypes.CV_8U);
@@ -209,11 +217,17 @@ export function detectNormalizedCardCandidates(
   const closedContours = PointVectorOfVectors.create();
 
   try {
-    const pixels = new Uint8Array(resized.getPixelBuffer());
-    const input = Mat.createFromBuffer('uint8', DETECTOR_HEIGHT, DETECTOR_WIDTH, 3, pixels);
+    const detectorPixels = new Uint8Array(detectorResized.getPixelBuffer());
+    const detectorInput = Mat.createFromBuffer(
+      'uint8',
+      DETECTOR_HEIGHT,
+      DETECTOR_WIDTH,
+      3,
+      detectorPixels
+    );
 
     try {
-      OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
+      OpenCV.cvtColor(detectorInput, gray, ColorConversionCodes.COLOR_BGR2GRAY);
       OpenCV.GaussianBlur(gray, blurred, blurKernel, 0);
       OpenCV.Canny(blurred, edges, 40, 120);
 
@@ -237,8 +251,6 @@ export function detectNormalizedCardCandidates(
       collectQuadrilaterals(rawContours, imageArea, scored);
       collectQuadrilaterals(closedContours, imageArea, scored);
 
-      // Prefer the strongest outer contour when raw/closed passes report the
-      // same card. Card-aspect closeness is a tie-breaker for similar areas.
       scored.sort((a, b) => {
         const areaDelta = b.area - a.area;
         if (Math.abs(areaDelta) > imageArea * 0.002) {
@@ -257,23 +269,51 @@ export function detectNormalizedCardCandidates(
         }
       }
 
-      const normalizedCandidates: OpenCvCardCandidate[] = [];
+      if (accepted.length === 0) {
+        return [];
+      }
+
+      const recognitionResized = recognitionResizer.resize(frame);
       try {
-        for (const candidate of accepted) {
-          normalizedCandidates.push({
-            detectorCorners: candidate.corners,
-            normalizedImage: normalizeCardPerspective(input, candidate.corners),
-          });
+        const recognitionPixels = new Uint8Array(recognitionResized.getPixelBuffer());
+        const recognitionInput = Mat.createFromBuffer(
+          'uint8',
+          RECOGNITION_HEIGHT,
+          RECOGNITION_WIDTH,
+          3,
+          recognitionPixels
+        );
+
+        try {
+          const scaleX = RECOGNITION_WIDTH / DETECTOR_WIDTH;
+          const scaleY = RECOGNITION_HEIGHT / DETECTOR_HEIGHT;
+          const normalizedCandidates: OpenCvCardCandidate[] = [];
+
+          try {
+            for (const candidate of accepted) {
+              normalizedCandidates.push({
+                detectorCorners: candidate.corners,
+                normalizedImage: normalizeCardPerspective(
+                  recognitionInput,
+                  scaleCorners(candidate.corners, scaleX, scaleY)
+                ),
+              });
+            }
+            return normalizedCandidates;
+          } catch (error) {
+            for (const candidate of normalizedCandidates) {
+              candidate.normalizedImage.release();
+            }
+            throw error;
+          }
+        } finally {
+          recognitionInput.release();
         }
-        return normalizedCandidates;
-      } catch (error) {
-        for (const candidate of normalizedCandidates) {
-          candidate.normalizedImage.release();
-        }
-        throw error;
+      } finally {
+        recognitionResized.dispose();
       }
     } finally {
-      input.release();
+      detectorInput.release();
     }
   } finally {
     closedContours.release();
@@ -285,14 +325,18 @@ export function detectNormalizedCardCandidates(
     edges.release();
     blurred.release();
     gray.release();
-    resized.dispose();
+    detectorResized.dispose();
   }
 }
 
-export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadrilateral[] {
+export function detectCardQuadrilaterals(
+  frame: Frame,
+  detectorResizer: Resizer,
+  recognitionResizer: Resizer
+): Quadrilateral[] {
   'worklet';
 
-  const candidates = detectNormalizedCardCandidates(frame, resizer);
+  const candidates = detectNormalizedCardCandidates(frame, detectorResizer, recognitionResizer);
   try {
     return candidates.map((candidate) => candidate.detectorCorners);
   } finally {
