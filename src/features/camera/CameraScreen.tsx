@@ -9,11 +9,10 @@ import type { Point, Quadrilateral, RecognitionResult } from '../../core/vision/
 import {
   DETECTOR_HEIGHT,
   DETECTOR_WIDTH,
-  RECOGNITION_HEIGHT,
-  RECOGNITION_WIDTH,
   detectNormalizedCardCandidates,
 } from '../../infrastructure/detection/opencv/detectCardQuadrilaterals';
 import {
+  getOrbRuntimeCacheInitCount,
   recognizeCardCandidatesWithOrb,
   type OrbRecognitionDiagnostics,
   type RecognizedCardCandidate,
@@ -30,6 +29,10 @@ type ViewDetection = {
 type PreviewSize = {
   readonly width: number;
   readonly height: number;
+};
+
+type CvWorkletGlobal = typeof globalThis & {
+  __berserkCvProcessedFrames?: number;
 };
 
 function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
@@ -54,9 +57,6 @@ function compactCvError(stage: string, error: unknown): string {
   'worklet';
 
   const text = String(error);
-  // OpenCV error strings contain a very long Gradle-cache source path before
-  // the useful assertion/message. Keep the tail so the on-device badge shows
-  // the actionable part instead of three lines of C:/Users/.../transforms/...
   const tail = text.length > 420 ? `…${text.slice(-420)}` : text;
   return `${stage}: ${tail}`;
 }
@@ -70,17 +70,9 @@ export function CameraScreen() {
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
 
-  const { resizer: detectorResizer, error: detectorResizerError } = useResizer({
+  const { resizer, error: resizerError } = useResizer({
     width: DETECTOR_WIDTH,
     height: DETECTOR_HEIGHT,
-    channelOrder: 'bgr',
-    dataType: 'uint8',
-    pixelLayout: 'interleaved',
-    scaleMode: 'cover',
-  });
-  const { resizer: recognitionResizer, error: recognitionResizerError } = useResizer({
-    width: RECOGNITION_WIDTH,
-    height: RECOGNITION_HEIGHT,
     channelOrder: 'bgr',
     dataType: 'uint8',
     pixelLayout: 'interleaved',
@@ -140,40 +132,76 @@ export function CameraScreen() {
     setDetections((current) => (current.length === 0 ? current : []));
   }, []);
 
+  const logCvStats = useCallback(
+    (
+      frameIndex: number,
+      candidates: number,
+      recognized: number,
+      detectMs: number,
+      orbMs: number,
+      totalMs: number,
+      cacheInitCount: number
+    ) => {
+      console.log(
+        `[BerserkCV] frame=${frameIndex} candidates=${candidates} recognized=${recognized} ` +
+          `detect=${detectMs}ms orb=${orbMs}ms total=${totalMs}ms cacheInit=${cacheInitCount}`
+      );
+    },
+    []
+  );
+
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
-    // Keep enough camera detail for distant-card recognition. Geometry is still
-    // downscaled to 240x320 by detectorResizer before any contour processing.
-    targetResolution: { width: RECOGNITION_WIDTH, height: RECOGNITION_HEIGHT },
+    targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
     enablePreviewSizedOutputBuffers: true,
     enablePhysicalBufferRotation: false,
     dropFramesWhileBusy: true,
     onFrame(frame) {
       'worklet';
 
-      if (detectorResizer == null || recognitionResizer == null) {
+      if (resizer == null) {
         frame.dispose();
         return;
       }
 
+      const startedAt = Date.now();
       let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
       let frameDisposed = false;
       try {
         try {
-          candidates = detectNormalizedCardCandidates(frame, detectorResizer, recognitionResizer);
+          candidates = detectNormalizedCardCandidates(frame, resizer);
         } catch (error) {
           scheduleOnRN(showDetectorError, compactCvError('DETECT/WARP', error));
           return;
         }
 
-        // Both resized copies are complete now, so the scarce Camera buffer can
-        // be returned before ORB performs expensive feature matching.
+        const afterDetect = Date.now();
         frame.dispose();
         frameDisposed = true;
 
         try {
           const recognized = recognizeCardCandidatesWithOrb(candidates);
+          const finishedAt = Date.now();
           scheduleOnRN(showDetections, recognized);
+
+          const scope = globalThis as CvWorkletGlobal;
+          const frameIndex = (scope.__berserkCvProcessedFrames ?? 0) + 1;
+          scope.__berserkCvProcessedFrames = frameIndex;
+          if (frameIndex % 10 === 0) {
+            const recognizedCount = recognized.filter(
+              (candidate) => candidate.recognition.status === 'recognized'
+            ).length;
+            scheduleOnRN(
+              logCvStats,
+              frameIndex,
+              candidates.length,
+              recognizedCount,
+              afterDetect - startedAt,
+              finishedAt - afterDetect,
+              finishedAt - startedAt,
+              getOrbRuntimeCacheInitCount()
+            );
+          }
         } catch (error) {
           scheduleOnRN(showDetectorError, compactCvError('ORB', error));
         }
@@ -203,13 +231,7 @@ export function CameraScreen() {
   }
 
   const isCameraActive = appState === 'active' && selectedCard === null;
-  const nativeError =
-    detectorResizerError != null
-      ? String(detectorResizerError)
-      : recognitionResizerError != null
-        ? String(recognitionResizerError)
-        : null;
-  const visibleError = nativeError ?? detectorError ?? cameraError;
+  const visibleError = (resizerError != null ? String(resizerError) : null) ?? detectorError ?? cameraError;
   const recognizedCount = detections.filter(
     (detection) => detection.recognition.status === 'recognized'
   ).length;
@@ -261,7 +283,7 @@ export function CameraScreen() {
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
         <Text style={styles.debugSubtext}>
-          DET {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · ORB SRC {RECOGNITION_WIDTH}×{RECOGNITION_HEIGHT}
+          CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · SINGLE SRC
         </Text>
       </View>
 
