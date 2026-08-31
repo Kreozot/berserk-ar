@@ -50,6 +50,17 @@ function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
   };
 }
 
+function compactCvError(stage: string, error: unknown): string {
+  'worklet';
+
+  const text = String(error);
+  // OpenCV error strings contain a very long Gradle-cache source path before
+  // the useful assertion/message. Keep the tail so the on-device badge shows
+  // the actionable part instead of three lines of C:/Users/.../transforms/...
+  const tail = text.length > 420 ? `…${text.slice(-420)}` : text;
+  return `${stage}: ${tail}`;
+}
+
 export function CameraScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
@@ -148,17 +159,24 @@ export function CameraScreen() {
       let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
       let frameDisposed = false;
       try {
-        candidates = detectNormalizedCardCandidates(frame, detectorResizer, recognitionResizer);
+        try {
+          candidates = detectNormalizedCardCandidates(frame, detectorResizer, recognitionResizer);
+        } catch (error) {
+          scheduleOnRN(showDetectorError, compactCvError('DETECT/WARP', error));
+          return;
+        }
 
         // Both resized copies are complete now, so the scarce Camera buffer can
         // be returned before ORB performs expensive feature matching.
         frame.dispose();
         frameDisposed = true;
 
-        const recognized = recognizeCardCandidatesWithOrb(candidates);
-        scheduleOnRN(showDetections, recognized);
-      } catch (error) {
-        scheduleOnRN(showDetectorError, String(error));
+        try {
+          const recognized = recognizeCardCandidatesWithOrb(candidates);
+          scheduleOnRN(showDetections, recognized);
+        } catch (error) {
+          scheduleOnRN(showDetectorError, compactCvError('ORB', error));
+        }
       } finally {
         for (const candidate of candidates) {
           candidate.normalizedImage.release();
@@ -249,7 +267,7 @@ export function CameraScreen() {
 
       {visibleError ? (
         <View pointerEvents="none" style={styles.errorBadge}>
-          <Text numberOfLines={3} style={styles.errorText}>
+          <Text numberOfLines={5} style={styles.errorText}>
             CV ERROR: {visibleError}
           </Text>
         </View>
