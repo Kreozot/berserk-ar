@@ -1,17 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import {
-  Camera,
-  useAsyncRunner,
-  useCameraPermission,
-  useFrameOutput,
-  type CameraRef,
-} from 'react-native-vision-camera';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
+import { Camera, useCameraPermission, useFrameOutput } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { getCardById, type CardDefinition } from '../../catalog/cards';
-import type { Quadrilateral, RecognitionResult } from '../../core/vision/types';
+import type { Point, Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
   DETECTOR_HEIGHT,
   DETECTOR_WIDTH,
@@ -31,13 +25,40 @@ type ViewDetection = {
   readonly diagnostics: OrbRecognitionDiagnostics;
 };
 
+type PreviewSize = {
+  readonly width: number;
+  readonly height: number;
+};
+
+function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
+  // Device calibration showed the detector image is 180° opposite to the
+  // displayed back-camera preview. Rotate around the detector center, then
+  // apply the same centered `cover` transform used by the preview.
+  const rotatedPoint = {
+    x: DETECTOR_WIDTH - point.x,
+    y: DETECTOR_HEIGHT - point.y,
+  };
+
+  const scale = Math.max(preview.width / DETECTOR_WIDTH, preview.height / DETECTOR_HEIGHT);
+  const scaledWidth = DETECTOR_WIDTH * scale;
+  const scaledHeight = DETECTOR_HEIGHT * scale;
+  const cropX = (scaledWidth - preview.width) / 2;
+  const cropY = (scaledHeight - preview.height) / 2;
+
+  return {
+    x: rotatedPoint.x * scale - cropX,
+    y: rotatedPoint.y * scale - cropY,
+  };
+}
+
 export function CameraScreen() {
-  const cameraRef = useRef<CameraRef>(null);
   const { hasPermission, requestPermission } = useCameraPermission();
   const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
   const [detections, setDetections] = useState<ViewDetection[]>([]);
   const [detectorError, setDetectorError] = useState<string | null>(null);
-  const asyncRunner = useAsyncRunner();
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const { resizer, error: resizerError } = useResizer({
     width: DETECTOR_WIDTH,
     height: DETECTOR_HEIGHT,
@@ -54,44 +75,57 @@ export function CameraScreen() {
   }, [hasPermission, requestPermission]);
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      setAppState(nextState);
+      if (nextState !== 'active') {
+        setDetections([]);
+        setCameraError(null);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     if (selectedCard !== null) {
       setDetections([]);
     }
   }, [selectedCard]);
 
-  const showDetections = useCallback((cameraDetections: RecognizedCardCandidate[]) => {
-    const camera = cameraRef.current;
-    if (camera === null) {
-      return;
-    }
+  const showDetections = useCallback(
+    (cameraDetections: RecognizedCardCandidate[]) => {
+      if (previewSize === null) {
+        return;
+      }
 
-    try {
       const viewDetections = cameraDetections.map((detection): ViewDetection => ({
         corners: [
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[0]),
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[1]),
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[2]),
-          camera.convertCameraPointToViewPoint(detection.cameraCorners[3]),
+          mapDetectorPointToPreview(detection.detectorCorners[0], previewSize),
+          mapDetectorPointToPreview(detection.detectorCorners[1], previewSize),
+          mapDetectorPointToPreview(detection.detectorCorners[2], previewSize),
+          mapDetectorPointToPreview(detection.detectorCorners[3], previewSize),
         ],
         recognition: detection.recognition,
         diagnostics: detection.diagnostics,
       }));
-      setDetections(viewDetections);
+
+      setDetections((current) =>
+        current.length === 0 && viewDetections.length === 0 ? current : viewDetections
+      );
       setDetectorError(null);
-    } catch {
-      // Preview conversion can briefly fail while the native preview is mounting.
-    }
-  }, []);
+    },
+    [previewSize]
+  );
 
   const showDetectorError = useCallback((message: string) => {
-    setDetectorError(message);
-    setDetections([]);
+    setDetectorError((current) => (current === message ? current : message));
+    setDetections((current) => (current.length === 0 ? current : []));
   }, []);
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
-    targetResolution: { width: 480, height: 640 },
-    enablePhysicalBufferRotation: true,
+    targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
+    enablePreviewSizedOutputBuffers: true,
+    enablePhysicalBufferRotation: false,
     dropFramesWhileBusy: true,
     onFrame(frame) {
       'worklet';
@@ -101,26 +135,27 @@ export function CameraScreen() {
         return;
       }
 
-      const wasHandled = asyncRunner.runAsync(() => {
-        'worklet';
+      let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
+      let frameDisposed = false;
+      try {
+        candidates = detectNormalizedCardCandidates(frame, resizer);
 
-        let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
-        try {
-          candidates = detectNormalizedCardCandidates(frame, resizer);
-          const recognized = recognizeCardCandidatesWithOrb(candidates);
-          scheduleOnRN(showDetections, recognized);
-        } catch (error) {
-          scheduleOnRN(showDetectorError, String(error));
-        } finally {
-          for (const candidate of candidates) {
-            candidate.normalizedImage.release();
-          }
+        // Release the scarce Camera buffer before ORB starts. The normalized
+        // Mats are independent copies and remain valid for matching.
+        frame.dispose();
+        frameDisposed = true;
+
+        const recognized = recognizeCardCandidatesWithOrb(candidates);
+        scheduleOnRN(showDetections, recognized);
+      } catch (error) {
+        scheduleOnRN(showDetectorError, String(error));
+      } finally {
+        for (const candidate of candidates) {
+          candidate.normalizedImage.release();
+        }
+        if (!frameDisposed) {
           frame.dispose();
         }
-      });
-
-      if (!wasHandled) {
-        frame.dispose();
       }
     },
   });
@@ -139,18 +174,33 @@ export function CameraScreen() {
     );
   }
 
+  const isCameraActive = appState === 'active' && selectedCard === null;
   const nativeError = resizerError == null ? null : String(resizerError);
-  const visibleError = nativeError ?? detectorError;
+  const visibleError = nativeError ?? detectorError ?? cameraError;
   const recognizedCount = detections.filter(
     (detection) => detection.recognition.status === 'recognized'
   ).length;
 
   return (
-    <View style={styles.container}>
+    <View
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setPreviewSize((current) =>
+          current?.width === width && current.height === height ? current : { width, height }
+        );
+      }}
+      style={styles.container}
+    >
       <Camera
-        ref={cameraRef}
         device="back"
-        isActive={selectedCard === null}
+        isActive={isCameraActive}
+        onError={(error) => {
+          // Android may report an interruption while the app is transitioning
+          // to background. That is expected once isActive is being turned off.
+          if (appState === 'active') {
+            setCameraError(error.message);
+          }
+        }}
         orientationSource="interface"
         outputs={[frameOutput]}
         resizeMode="cover"
@@ -179,7 +229,9 @@ export function CameraScreen() {
         <Text style={styles.debugText}>
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
-        <Text style={styles.debugSubtext}>REAL IDENTIFICATION</Text>
+        <Text style={styles.debugSubtext}>
+          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT}
+        </Text>
       </View>
 
       {visibleError ? (

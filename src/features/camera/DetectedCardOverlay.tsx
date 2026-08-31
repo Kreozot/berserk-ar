@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
-import type { CardDefinition } from '../../catalog/cards';
+import { getCardById, type CardDefinition } from '../../catalog/cards';
 import type { Point, Quadrilateral } from '../../core/vision/types';
 import type { OrbRecognitionDiagnostics } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 
@@ -44,9 +44,19 @@ export function DetectedCardOverlay({
   const right = Math.max(...xs);
   const bottom = Math.max(...ys);
   const confidencePercent = Math.round(confidence * 100);
-  const label = card
+  const bestCandidate = diagnostics.bestCardId
+    ? (getCardById(diagnostics.bestCardId)?.nameRu ?? diagnostics.bestCardId)
+    : 'none';
+  const title = card
     ? `${card.nameRu} · ${confidencePercent}%`
-    : `UNKNOWN · ${diagnostics.bestGoodMatches}/${diagnostics.secondBestGoodMatches}`;
+    : `UNKNOWN · best: ${bestCandidate}`;
+  const metrics = [
+    `q=${diagnostics.queryDescriptors}`,
+    `m=${diagnostics.bestGoodMatches}/${diagnostics.secondBestGoodMatches}`,
+    `gm=${diagnostics.goodMatchRatio.toFixed(2)}`,
+    `Δ=${diagnostics.winnerMargin}`,
+    `wr=${diagnostics.winnerRatio.toFixed(2)}`,
+  ].join('  ');
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -74,7 +84,10 @@ export function DetectedCardOverlay({
           },
         ]}
       >
-        <Text style={styles.label}>{label}</Text>
+        <View style={styles.label}>
+          <Text style={styles.labelTitle}>{title}</Text>
+          <Text style={styles.labelMetrics}>{metrics}</Text>
+        </View>
       </Pressable>
     </View>
   );
@@ -92,15 +105,23 @@ const styles = StyleSheet.create({
   label: {
     position: 'absolute',
     left: 0,
-    bottom: -28,
-    maxWidth: 240,
+    bottom: -46,
+    maxWidth: 330,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 6,
     overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.78)',
+  },
+  labelTitle: {
     color: '#ffffff',
-    backgroundColor: 'rgba(0,0,0,0.75)',
     fontSize: 12,
     fontWeight: '600',
+  },
+  labelMetrics: {
+    marginTop: 2,
+    color: '#cccccc',
+    fontSize: 9,
+    fontWeight: '500',
   },
 });
