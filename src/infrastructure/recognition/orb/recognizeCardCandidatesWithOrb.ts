@@ -24,9 +24,6 @@ const ORB_FAST_THRESHOLD = 10;
 
 const LOWE_RATIO = 0.75;
 
-// Calibrated from first physical-device runs. Correct cards often produce only
-// ~20-25 good matches at table distance, but are still clearly separated from
-// the second-best reference. Random rectangles seen so far stay below 18.
 const MIN_QUERY_DESCRIPTORS = 40;
 const MIN_GOOD_MATCHES_FLOOR = 18;
 const MAX_GOOD_MATCHES_REQUIREMENT = 28;
@@ -69,6 +66,30 @@ type OrbRuntimeCache = {
 type WorkletGlobal = typeof globalThis & {
   __berserkOrbRuntimeCache?: OrbRuntimeCache;
 };
+
+function emptyDiagnostics(queryDescriptors = 0): OrbRecognitionDiagnostics {
+  'worklet';
+  return {
+    bestCardId: null,
+    queryDescriptors,
+    bestGoodMatches: 0,
+    secondBestGoodMatches: 0,
+    goodMatchRatio: 0,
+    winnerMargin: 0,
+    winnerRatio: 0,
+  };
+}
+
+function unknownResult(queryDescriptors = 0): {
+  recognition: RecognitionResult;
+  diagnostics: OrbRecognitionDiagnostics;
+} {
+  'worklet';
+  return {
+    recognition: { status: 'unknown', confidence: 0 },
+    diagnostics: emptyDiagnostics(queryDescriptors),
+  };
+}
 
 function clamp01(value: number): number {
   'worklet';
@@ -138,6 +159,18 @@ function countGoodMatches(
 ): number {
   'worklet';
 
+  // OpenCV Mat::elemSize() asserts on an empty Mat. A malformed perspective
+  // candidate or invalid reference must never be allowed to abort the whole frame.
+  if (
+    queryDescriptors.rows <= 0 ||
+    queryDescriptors.cols <= 0 ||
+    referenceDescriptors.rows <= 0 ||
+    referenceDescriptors.cols <= 0 ||
+    queryDescriptors.cols !== referenceDescriptors.cols
+  ) {
+    return 0;
+  }
+
   const matches = OpenCV.knnMatchBF(matcher, queryDescriptors, referenceDescriptors, 2);
   try {
     let goodMatches = 0;
@@ -178,26 +211,28 @@ function recognizeOne(
 ): { recognition: RecognitionResult; diagnostics: OrbRecognitionDiagnostics } {
   'worklet';
 
+  // A rare bad warp can produce an empty Mat without throwing at warp time.
+  // Skip it before OpenCV tries to read elemSize() from it.
+  if (image.rows <= 0 || image.cols <= 0) {
+    return unknownResult();
+  }
+
   const gray = Mat.create(0, 0, DataTypes.CV_8U);
   try {
     OpenCV.cvtColor(image, gray, ColorConversionCodes.COLOR_BGR2GRAY);
+    if (gray.rows <= 0 || gray.cols <= 0) {
+      return unknownResult();
+    }
+
     const { keypoints, descriptors } = OpenCV.detectAndCompute(orb, gray);
 
     try {
       const queryDescriptors = descriptors.rows;
-      if (queryDescriptors < MIN_QUERY_DESCRIPTORS) {
-        return {
-          recognition: { status: 'unknown', confidence: 0 },
-          diagnostics: {
-            bestCardId: null,
-            queryDescriptors,
-            bestGoodMatches: 0,
-            secondBestGoodMatches: 0,
-            goodMatchRatio: 0,
-            winnerMargin: 0,
-            winnerRatio: 0,
-          },
-        };
+      if (
+        queryDescriptors < MIN_QUERY_DESCRIPTORS ||
+        descriptors.cols <= 0
+      ) {
+        return unknownResult(Math.max(queryDescriptors, 0));
       }
 
       const ranking: RankedReference[] = references.map((reference) => ({
@@ -208,6 +243,10 @@ function recognizeOne(
 
       const best = ranking[0];
       const second = ranking[1];
+      if (best == null || second == null) {
+        return unknownResult(queryDescriptors);
+      }
+
       const goodMatchRatio = best.goodMatches / Math.max(queryDescriptors, 1);
       const winnerMargin = best.goodMatches - second.goodMatches;
       const winnerRatio = best.goodMatches / Math.max(second.goodMatches, 1);
@@ -246,10 +285,6 @@ function recognizeOne(
   }
 }
 
-/**
- * Recognizes every normalized candidate using an ORB/matcher/reference cache
- * that persists for the lifetime of the Frame Output worklet runtime.
- */
 export function recognizeCardCandidatesWithOrb(
   candidates: readonly OpenCvCardCandidate[]
 ): RecognizedCardCandidate[] {
@@ -262,16 +297,25 @@ export function recognizeCardCandidatesWithOrb(
   const { orb, matcher, references } = getOrbRuntimeCache();
 
   return candidates.map((candidate) => {
-    const { recognition, diagnostics } = recognizeOne(
-      candidate.normalizedImage,
-      orb,
-      matcher,
-      references
-    );
-    return {
-      detectorCorners: candidate.detectorCorners,
-      recognition,
-      diagnostics,
-    };
+    try {
+      const { recognition, diagnostics } = recognizeOne(
+        candidate.normalizedImage,
+        orb,
+        matcher,
+        references
+      );
+      return {
+        detectorCorners: candidate.detectorCorners,
+        recognition,
+        diagnostics,
+      };
+    } catch {
+      // One malformed candidate must not discard all valid detections from the frame.
+      return {
+        detectorCorners: candidate.detectorCorners,
+        recognition: { status: 'unknown', confidence: 0 } as RecognitionResult,
+        diagnostics: emptyDiagnostics(),
+      };
+    }
   });
 }
