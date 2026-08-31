@@ -65,6 +65,7 @@ type OrbRuntimeCache = {
 
 type WorkletGlobal = typeof globalThis & {
   __berserkOrbRuntimeCache?: OrbRuntimeCache;
+  __berserkOrbRuntimeCacheInitCount?: number;
 };
 
 function emptyDiagnostics(queryDescriptors = 0): OrbRecognitionDiagnostics {
@@ -149,7 +150,13 @@ function getOrbRuntimeCache(): OrbRuntimeCache {
     references: createReferenceMats(),
   };
   scope.__berserkOrbRuntimeCache = created;
+  scope.__berserkOrbRuntimeCacheInitCount = (scope.__berserkOrbRuntimeCacheInitCount ?? 0) + 1;
   return created;
+}
+
+export function getOrbRuntimeCacheInitCount(): number {
+  'worklet';
+  return (globalThis as WorkletGlobal).__berserkOrbRuntimeCacheInitCount ?? 0;
 }
 
 function countGoodMatches(
@@ -159,8 +166,6 @@ function countGoodMatches(
 ): number {
   'worklet';
 
-  // OpenCV Mat::elemSize() asserts on an empty Mat. A malformed perspective
-  // candidate or invalid reference must never be allowed to abort the whole frame.
   if (
     queryDescriptors.rows <= 0 ||
     queryDescriptors.cols <= 0 ||
@@ -211,8 +216,6 @@ function recognizeOne(
 ): { recognition: RecognitionResult; diagnostics: OrbRecognitionDiagnostics } {
   'worklet';
 
-  // A rare bad warp can produce an empty Mat without throwing at warp time.
-  // Skip it before OpenCV tries to read elemSize() from it.
   if (image.rows <= 0 || image.cols <= 0) {
     return unknownResult();
   }
@@ -228,10 +231,7 @@ function recognizeOne(
 
     try {
       const queryDescriptors = descriptors.rows;
-      if (
-        queryDescriptors < MIN_QUERY_DESCRIPTORS ||
-        descriptors.cols <= 0
-      ) {
+      if (queryDescriptors < MIN_QUERY_DESCRIPTORS || descriptors.cols <= 0) {
         return unknownResult(Math.max(queryDescriptors, 0));
       }
 
@@ -250,11 +250,7 @@ function recognizeOne(
       const goodMatchRatio = best.goodMatches / Math.max(queryDescriptors, 1);
       const winnerMargin = best.goodMatches - second.goodMatches;
       const winnerRatio = best.goodMatches / Math.max(second.goodMatches, 1);
-      const confidence = scoreConfidence(
-        best.goodMatches,
-        second.goodMatches,
-        queryDescriptors
-      );
+      const confidence = scoreConfidence(best.goodMatches, second.goodMatches, queryDescriptors);
 
       const recognized =
         best.goodMatches >= requiredGoodMatches(queryDescriptors) &&
@@ -310,7 +306,6 @@ export function recognizeCardCandidatesWithOrb(
         diagnostics,
       };
     } catch {
-      // One malformed candidate must not discard all valid detections from the frame.
       return {
         detectorCorners: candidate.detectorCorners,
         recognition: { status: 'unknown', confidence: 0 } as RecognitionResult,
