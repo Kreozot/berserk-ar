@@ -10,6 +10,8 @@ type Props = {
   corners: Quadrilateral;
   diagnostics: OrbRecognitionDiagnostics;
   onPress: (card: CardDefinition) => void;
+  retainedIdentity: boolean;
+  trackId: string;
 };
 
 const RECOGNIZED_COLOR = '#35d06f';
@@ -39,6 +41,8 @@ export function DetectedCardOverlay({
   corners,
   diagnostics,
   onPress,
+  retainedIdentity,
+  trackId,
 }: Props) {
   const xs = corners.map((point) => point.x);
   const ys = corners.map((point) => point.y);
@@ -52,10 +56,12 @@ export function DetectedCardOverlay({
   const bestCandidate = diagnostics.bestCardId
     ? (getCardById(diagnostics.bestCardId)?.nameRu ?? diagnostics.bestCardId)
     : 'none';
+  const sourceSuffix = retainedIdentity ? ' · TRACK' : '';
   const title = card
-    ? `${card.nameRu} · ${confidencePercent}%`
+    ? `${card.nameRu} · ${confidencePercent}%${sourceSuffix}`
     : `UNKNOWN · best: ${bestCandidate}`;
   const metrics = [
+    trackId,
     `q=${diagnostics.queryDescriptors}`,
     `m=${diagnostics.bestGoodMatches}/${diagnostics.secondBestGoodMatches}`,
     `gm=${diagnostics.goodMatchRatio.toFixed(2)}`,
