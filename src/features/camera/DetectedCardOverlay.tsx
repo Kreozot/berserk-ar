@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getCardById, type CardDefinition } from '../../catalog/cards';
 import type { Quadrilateral } from '../../core/vision/types';
@@ -17,19 +17,6 @@ type Props = {
 
 const RECOGNIZED_COLOR = '#35d06f';
 const UNKNOWN_COLOR = '#f0b429';
-
-/** Converts pure overlay-line geometry into the React Native style used for one quad edge. */
-function getLineStyle(start: Quadrilateral[number], end: Quadrilateral[number]): ViewStyle {
-  const line = getOverlayLineGeometry(start, end);
-  return {
-    position: 'absolute',
-    left: line.left,
-    top: line.top,
-    width: line.width,
-    height: line.height,
-    transform: [{ rotate: `${line.angleRad}rad` }],
-  };
-}
 
 /**
  * Draws an interactive quadrilateral around one detected card plus recognition diagnostics.
@@ -73,11 +60,23 @@ export function DetectedCardOverlay({
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {corners.map((corner, index) => {
         const next = corners[(index + 1) % corners.length];
+        const line = getOverlayLineGeometry(corner, next);
         return (
           <View
             key={index}
             pointerEvents="none"
-            style={[styles.edge, getLineStyle(corner, next), { backgroundColor: accentColor }]}
+            style={[
+              styles.edge,
+              {
+                position: 'absolute',
+                left: line.left,
+                top: line.top,
+                width: line.width,
+                height: line.height,
+                transform: [{ rotate: `${line.angleRad}rad` }],
+                backgroundColor: accentColor,
+              },
+            ]}
           />
         );
       })}
