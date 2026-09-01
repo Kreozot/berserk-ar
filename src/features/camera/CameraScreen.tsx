@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
 import { Camera, useCameraPermission, useFrameOutput } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { getCardById, type CardDefinition } from '../../catalog/cards';
+import { CardTracker } from '../../core/tracking/CardTracker';
 import type { Point, Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
   DETECTOR_HEIGHT,
@@ -21,9 +22,11 @@ import { CardModal } from '../card/CardModal';
 import { DetectedCardOverlay } from './DetectedCardOverlay';
 
 type ViewDetection = {
+  readonly trackId: string;
   readonly corners: Quadrilateral;
   readonly recognition: RecognitionResult;
   readonly diagnostics: OrbRecognitionDiagnostics;
+  readonly retainedIdentity: boolean;
 };
 
 type PreviewSize = {
@@ -199,6 +202,10 @@ export function CameraScreen() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const trackerRef = useRef<CardTracker | null>(null);
+  if (trackerRef.current === null) {
+    trackerRef.current = new CardTracker();
+  }
 
   useEffect(() => {
     if (!hasPermission) {
@@ -210,6 +217,7 @@ export function CameraScreen() {
     const subscription = AppState.addEventListener('change', (nextState) => {
       setAppState(nextState);
       if (nextState !== 'active') {
+        trackerRef.current?.reset();
         setDetections([]);
         setCameraError(null);
       }
@@ -219,26 +227,39 @@ export function CameraScreen() {
 
   useEffect(() => {
     if (selectedCard !== null) {
+      trackerRef.current?.reset();
       setDetections([]);
     }
   }, [selectedCard]);
 
   const showDetections = useCallback(
     (cameraDetections: RecognizedCardCandidate[]) => {
-      if (previewSize === null) {
+      if (previewSize === null || trackerRef.current === null) {
         return;
       }
 
-      const viewDetections = cameraDetections.map((detection): ViewDetection => ({
-        corners: [
-          mapDetectorPointToPreview(detection.detectorCorners[0], previewSize),
-          mapDetectorPointToPreview(detection.detectorCorners[1], previewSize),
-          mapDetectorPointToPreview(detection.detectorCorners[2], previewSize),
-          mapDetectorPointToPreview(detection.detectorCorners[3], previewSize),
-        ],
-        recognition: detection.recognition,
-        diagnostics: detection.diagnostics,
-      }));
+      const tracked = trackerRef.current.update(
+        cameraDetections.map((detection) => ({
+          corners: detection.detectorCorners,
+          recognition: detection.recognition,
+        }))
+      );
+
+      const viewDetections = tracked.map((track): ViewDetection => {
+        const source = cameraDetections[track.observationIndex];
+        return {
+          trackId: track.trackId,
+          corners: [
+            mapDetectorPointToPreview(track.corners[0], previewSize),
+            mapDetectorPointToPreview(track.corners[1], previewSize),
+            mapDetectorPointToPreview(track.corners[2], previewSize),
+            mapDetectorPointToPreview(track.corners[3], previewSize),
+          ],
+          recognition: track.recognition,
+          diagnostics: source.diagnostics,
+          retainedIdentity: track.retainedIdentity,
+        };
+      });
 
       setDetections((current) =>
         current.length === 0 && viewDetections.length === 0 ? current : viewDetections
@@ -310,7 +331,7 @@ export function CameraScreen() {
         onDetections={showDetections}
       />
 
-      {detections.map((detection, index) => {
+      {detections.map((detection) => {
         const card =
           detection.recognition.status === 'recognized'
             ? (getCardById(detection.recognition.cardId) ?? null)
@@ -318,19 +339,21 @@ export function CameraScreen() {
 
         return (
           <DetectedCardOverlay
-            key={index}
+            key={detection.trackId}
             card={card}
             confidence={detection.recognition.confidence}
             corners={detection.corners}
             diagnostics={detection.diagnostics}
             onPress={setSelectedCard}
+            retainedIdentity={detection.retainedIdentity}
+            trackId={detection.trackId}
           />
         );
       })}
 
       <View pointerEvents="none" style={styles.debugBadge}>
         <Text style={styles.debugText}>
-          OPENCV + ORB · {recognizedCount}/{detections.length}
+          OPENCV + ORB + TRACK · {recognizedCount}/{detections.length}
         </Text>
         <Text style={styles.debugSubtext}>
           CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · SINGLE SRC
