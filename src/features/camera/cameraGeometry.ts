@@ -12,6 +12,7 @@ export function mapDetectorPointToPreview(
   detectorWidth: number,
   detectorHeight: number
 ): Point {
+  'worklet';
   const rotatedPoint = {
     x: detectorWidth - point.x,
     y: detectorHeight - point.y,
@@ -31,6 +32,7 @@ export function mapDetectorPointToPreview(
 
 /** Produces a compact, bounded error string suitable for the on-screen CV badge. */
 export function compactCvError(stage: string, error: unknown): string {
+  'worklet';
   const text = String(error);
   const tail = text.length > 420 ? `…${text.slice(-420)}` : text;
   return `${stage}: ${tail}`;
