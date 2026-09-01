@@ -3,6 +3,7 @@ import { pointDistance } from '../../../core/vision/geometry';
 
 /** Rotates corner assignment so the observed short edge maps to normalized image width. */
 export function orientShortEdgeAsWidth(corners: Quadrilateral): Quadrilateral {
+  'worklet';
   const horizontalPair =
     (pointDistance(corners[0], corners[1]) + pointDistance(corners[2], corners[3])) / 2;
   const verticalPair =
