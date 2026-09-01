@@ -43,6 +43,7 @@ export type RecognizedCardCandidate = {
   readonly detectorCorners: Quadrilateral;
   readonly recognition: RecognitionResult;
   readonly diagnostics: OrbRecognitionDiagnostics;
+  readonly evaluated: boolean;
 };
 
 type ReferenceMat = { readonly cardId: string; readonly descriptors: Mat };
@@ -248,12 +249,13 @@ export function recognizeCardCandidatesWithOrbNow(
   return candidates.map((candidate) => {
     try {
       const { recognition, diagnostics } = recognizeOne(candidate.normalizedImage, orb, matcher, references);
-      return { detectorCorners: candidate.detectorCorners, recognition, diagnostics };
+      return { detectorCorners: candidate.detectorCorners, recognition, diagnostics, evaluated: true };
     } catch {
       return {
         detectorCorners: candidate.detectorCorners,
         recognition: { status: 'unknown', confidence: 0 } as RecognitionResult,
         diagnostics: emptyDiagnostics(),
+        evaluated: true,
       };
     }
   });
