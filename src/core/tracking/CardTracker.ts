@@ -1,4 +1,6 @@
 import type { Quadrilateral, RecognitionResult } from '../vision/types';
+import { boundsOf, type Bounds } from '../vision/geometry';
+import { scoreTrackMatch } from './trackingPolicy';
 
 export type TrackObservation = {
   readonly corners: Quadrilateral;
@@ -12,18 +14,6 @@ export type TrackedObservation = {
   readonly corners: Quadrilateral;
   readonly recognition: RecognitionResult;
   readonly retainedIdentity: boolean;
-};
-
-type Bounds = {
-  readonly left: number;
-  readonly top: number;
-  readonly right: number;
-  readonly bottom: number;
-  readonly width: number;
-  readonly height: number;
-  readonly centerX: number;
-  readonly centerY: number;
-  readonly diagonal: number;
 };
 
 type TrackState = {
@@ -48,69 +38,12 @@ const MAX_MISSED_FRAMES = 8;
 const MAX_UNKNOWN_STREAK = 8;
 const CHALLENGER_CONFIRMATIONS = 2;
 const MIN_SWITCH_CONFIDENCE = 0.28;
-const MIN_IOU = 0.02;
-const MAX_NORMALIZED_CENTER_DISTANCE = 1.35;
 const CONFIDENCE_ALPHA = 0.35;
 
-function boundsOf(corners: Quadrilateral): Bounds {
-  const xs = corners.map((point) => point.x);
-  const ys = corners.map((point) => point.y);
-  const left = Math.min(...xs);
-  const top = Math.min(...ys);
-  const right = Math.max(...xs);
-  const bottom = Math.max(...ys);
-  const width = Math.max(1, right - left);
-  const height = Math.max(1, bottom - top);
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    width,
-    height,
-    centerX: (left + right) / 2,
-    centerY: (top + bottom) / 2,
-    diagonal: Math.sqrt(width * width + height * height),
-  };
-}
-
-function intersectionOverUnion(a: Bounds, b: Bounds): number {
-  const left = Math.max(a.left, b.left);
-  const top = Math.max(a.top, b.top);
-  const right = Math.min(a.right, b.right);
-  const bottom = Math.min(a.bottom, b.bottom);
-  const width = Math.max(0, right - left);
-  const height = Math.max(0, bottom - top);
-  const intersection = width * height;
-  const union = a.width * a.height + b.width * b.height - intersection;
-  return union <= 0 ? 0 : intersection / union;
-}
-
-function normalizedCenterDistance(a: Bounds, b: Bounds): number {
-  const dx = a.centerX - b.centerX;
-  const dy = a.centerY - b.centerY;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  return distance / Math.max((a.diagonal + b.diagonal) / 2, 1);
-}
-
-function sizeSimilarity(a: Bounds, b: Bounds): number {
-  const widthRatio = Math.min(a.width, b.width) / Math.max(a.width, b.width);
-  const heightRatio = Math.min(a.height, b.height) / Math.max(a.height, b.height);
-  return (widthRatio + heightRatio) / 2;
-}
-
-function matchScore(track: TrackState, observationBounds: Bounds): number | null {
-  const iou = intersectionOverUnion(track.bounds, observationBounds);
-  const centerDistance = normalizedCenterDistance(track.bounds, observationBounds);
-  if (iou < MIN_IOU && centerDistance > MAX_NORMALIZED_CENTER_DISTANCE) {
-    return null;
-  }
-
-  const centerScore = Math.max(0, 1 - centerDistance / MAX_NORMALIZED_CENTER_DISTANCE);
-  const shapeScore = sizeSimilarity(track.bounds, observationBounds);
-  return iou * 0.5 + centerScore * 0.35 + shapeScore * 0.15;
-}
-
+/**
+ * Updates a track's remembered card identity from one recognition observation.
+ * Returns true when the previous identity is intentionally retained.
+ */
 function updateIdentity(
   track: TrackState,
   recognition: RecognitionResult,
@@ -174,21 +107,27 @@ function updateIdentity(
   return true;
 }
 
+/**
+ * Maintains stable physical-card tracks and temporal identity across CV frames.
+ * It smooths short recognition failures without permanently sticking to stale cards.
+ */
 export class CardTracker {
   private nextTrackNumber = 1;
   private tracks: TrackState[] = [];
 
+  /** Drops all active tracks, for example after leaving the camera scene. */
   reset(): void {
     this.tracks = [];
   }
 
+  /** Matches observations to existing tracks and returns their stable identities. */
   update(observations: readonly TrackObservation[]): TrackedObservation[] {
     const observationBounds = observations.map((observation) => boundsOf(observation.corners));
     const pairs: PairScore[] = [];
 
     for (let trackIndex = 0; trackIndex < this.tracks.length; trackIndex += 1) {
       for (let observationIndex = 0; observationIndex < observations.length; observationIndex += 1) {
-        const score = matchScore(this.tracks[trackIndex], observationBounds[observationIndex]);
+        const score = scoreTrackMatch(this.tracks[trackIndex].bounds, observationBounds[observationIndex]);
         if (score !== null) {
           pairs.push({ trackIndex, observationIndex, score });
         }
