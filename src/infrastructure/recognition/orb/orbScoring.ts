@@ -7,11 +7,13 @@ export const MIN_WINNER_RATIO = 1.8;
 
 /** Clamps a numeric confidence contribution to the inclusive 0..1 range. */
 export function clamp01(value: number): number {
+  'worklet';
   return Math.max(0, Math.min(1, value));
 }
 
 /** Computes the dynamic number of Lowe-ratio matches required for recognition. */
 export function requiredGoodMatches(queryDescriptors: number): number {
+  'worklet';
   return Math.max(
     MIN_GOOD_MATCHES_FLOOR,
     Math.min(MAX_GOOD_MATCHES_REQUIREMENT, Math.ceil(queryDescriptors * 0.12))
@@ -24,6 +26,7 @@ export function scoreOrbConfidence(
   secondBestGoodMatches: number,
   queryDescriptors: number
 ): number {
+  'worklet';
   const matchStrength = clamp01(bestGoodMatches / 80);
   const queryCoverage = clamp01(bestGoodMatches / Math.max(queryDescriptors * 0.3, 1));
   const separation = clamp01((bestGoodMatches - secondBestGoodMatches) / 35);
@@ -36,6 +39,7 @@ export function passesOrbRecognitionThresholds(
   secondBestGoodMatches: number,
   queryDescriptors: number
 ): boolean {
+  'worklet';
   const goodMatchRatio = bestGoodMatches / Math.max(queryDescriptors, 1);
   const winnerMargin = bestGoodMatches - secondBestGoodMatches;
   const winnerRatio = bestGoodMatches / Math.max(secondBestGoodMatches, 1);
