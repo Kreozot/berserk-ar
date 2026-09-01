@@ -14,7 +14,14 @@ import {
 import type { Frame } from 'react-native-vision-camera';
 import type { Resizer } from 'react-native-vision-camera-resizer';
 
+import { edgeLengths, orderClockwise, polygonArea } from '../../../core/vision/geometry';
 import type { Point, Quadrilateral } from '../../../core/vision/types';
+import {
+  isStableCardQuad,
+  overlapsAcceptedQuad,
+  scoreCardShape,
+  summarizeCardQuad,
+} from './cardQuadGeometry';
 import { normalizeCardPerspective } from './normalizeCardPerspective';
 
 // One shared source keeps native buffer pressure down while giving contour
@@ -35,9 +42,6 @@ const MAX_PERIMETER_EXCESS = 1.45;
 const MIN_OPPOSITE_EDGE_RATIO = 0.5;
 const MAX_ADJACENT_EDGE_COSINE = 0.78;
 const MAX_CANDIDATES = 18;
-const MIN_QUAD_EDGE = 6;
-const MIN_QUAD_AREA = 90;
-
 const APPROX_EPSILON_RATIOS = [0.018, 0.025, 0.035, 0.05] as const;
 
 type CandidateSource = 'raw' | 'closed';
@@ -59,174 +63,21 @@ export type OpenCvCardCandidate = {
   normalizedImage: Mat;
 };
 
-function distance(a: Point, b: Point): number {
-  'worklet';
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function orderClockwise(points: readonly Point[]): Quadrilateral {
-  'worklet';
-
-  const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
-  const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
-  const ordered = [...points].sort(
-    (a, b) => Math.atan2(a.y - centerY, a.x - centerX) - Math.atan2(b.y - centerY, b.x - centerX)
-  );
-
-  let firstIndex = 0;
-  let smallestSum = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < ordered.length; index += 1) {
-    const point = ordered[index];
-    const sum = point.x + point.y;
-    if (sum < smallestSum) {
-      smallestSum = sum;
-      firstIndex = index;
-    }
-  }
-
-  return [
-    ordered[firstIndex],
-    ordered[(firstIndex + 1) % 4],
-    ordered[(firstIndex + 2) % 4],
-    ordered[(firstIndex + 3) % 4],
-  ];
-}
-
-function polygonArea(corners: Quadrilateral): number {
-  'worklet';
-
-  let twiceArea = 0;
-  for (let index = 0; index < 4; index += 1) {
-    const current = corners[index];
-    const next = corners[(index + 1) % 4];
-    twiceArea += current.x * next.y - next.x * current.y;
-  }
-  return Math.abs(twiceArea) / 2;
-}
-
-function isConvex(corners: Quadrilateral): boolean {
-  'worklet';
-
-  let sign = 0;
-  for (let index = 0; index < 4; index += 1) {
-    const a = corners[index];
-    const b = corners[(index + 1) % 4];
-    const c = corners[(index + 2) % 4];
-    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
-    if (Math.abs(cross) < 0.001) {
-      return false;
-    }
-    const currentSign = cross > 0 ? 1 : -1;
-    if (sign === 0) {
-      sign = currentSign;
-    } else if (sign !== currentSign) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function edgeLengths(corners: Quadrilateral): [number, number, number, number] {
-  'worklet';
-  return [
-    distance(corners[0], corners[1]),
-    distance(corners[1], corners[2]),
-    distance(corners[2], corners[3]),
-    distance(corners[3], corners[0]),
-  ];
-}
-
-function getCardAspect(corners: Quadrilateral): number {
-  'worklet';
-  const edges = edgeLengths(corners);
-  const sideA = (edges[0] + edges[2]) / 2;
-  const sideB = (edges[1] + edges[3]) / 2;
-  const shortSide = Math.min(sideA, sideB);
-  const longSide = Math.max(sideA, sideB);
-  return longSide <= 0 ? 0 : shortSide / longSide;
-}
-
-function oppositeEdgeSimilarity(corners: Quadrilateral): number {
-  'worklet';
-  const edges = edgeLengths(corners);
-  const pairA = Math.min(edges[0], edges[2]) / Math.max(edges[0], edges[2], 1);
-  const pairB = Math.min(edges[1], edges[3]) / Math.max(edges[1], edges[3], 1);
-  return Math.min(pairA, pairB);
-}
-
-function maxAdjacentEdgeCosine(corners: Quadrilateral): number {
-  'worklet';
-
-  let maximum = 0;
-  for (let index = 0; index < 4; index += 1) {
-    const previous = corners[(index + 3) % 4];
-    const current = corners[index];
-    const next = corners[(index + 1) % 4];
-    const ax = previous.x - current.x;
-    const ay = previous.y - current.y;
-    const bx = next.x - current.x;
-    const by = next.y - current.y;
-    const lengthA = Math.sqrt(ax * ax + ay * ay);
-    const lengthB = Math.sqrt(bx * bx + by * by);
-    if (lengthA <= 0 || lengthB <= 0) {
-      return 1;
-    }
-    const cosine = Math.abs((ax * bx + ay * by) / (lengthA * lengthB));
-    maximum = Math.max(maximum, cosine);
-  }
-  return maximum;
-}
-
-function isStableQuad(corners: Quadrilateral): boolean {
-  'worklet';
-
-  for (const point of corners) {
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-      return false;
-    }
-  }
-
-  const edges = edgeLengths(corners);
-  if (edges.some((edge) => edge < MIN_QUAD_EDGE)) {
-    return false;
-  }
-
-  return polygonArea(corners) >= MIN_QUAD_AREA && isConvex(corners);
-}
-
-function overlapsExisting(candidate: ScoredQuadrilateral, accepted: readonly ScoredQuadrilateral[]): boolean {
-  'worklet';
-
-  return accepted.some((other) => {
-    const dx = candidate.centerX - other.centerX;
-    const dy = candidate.centerY - other.centerY;
-    const distanceSquared = dx * dx + dy * dy;
-    const referenceSize = Math.min(candidate.width, candidate.height, other.width, other.height);
-    // Prefer an already accepted raw contour to a larger morphology-merged contour.
-    return distanceSquared < referenceSize * referenceSize * 0.6;
-  });
-}
-
+/** Approximates one contour at several tolerances until it becomes exactly four-sided. */
 function approximateQuadrilateral(contour: PointVector, perimeter: number): PointVector | null {
   'worklet';
-
   for (const epsilonRatio of APPROX_EPSILON_RATIOS) {
     const approx = PointVector.create();
     OpenCV.approxPolyDP(contour, approx, perimeter * epsilonRatio, true);
-    if (approx.length === 4) {
-      return approx;
-    }
+    if (approx.length === 4) return approx;
     approx.release();
   }
-
   return null;
 }
 
+/** Copies four native OpenCV points to plain JS points and normalizes their clockwise order. */
 function readQuadrilateral(approx: PointVector): Quadrilateral {
   'worklet';
-
   const result: Point[] = [];
   for (let index = 0; index < 4; index += 1) {
     const point = approx.get(index);
@@ -236,10 +87,10 @@ function readQuadrilateral(approx: PointVector): Quadrilateral {
       point.release();
     }
   }
-
   return orderClockwise(result);
 }
 
+/** Filters and scores contours that look geometrically like individual physical cards. */
 function collectQuadrilaterals(
   contours: PointVectorOfVectors,
   imageArea: number,
@@ -253,29 +104,21 @@ function collectQuadrilaterals(
     try {
       const { value: area } = OpenCV.contourArea(contour, false);
       const areaRatio = area / imageArea;
-      if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) {
-        continue;
-      }
+      if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) continue;
 
       const { value: perimeter } = OpenCV.arcLength(contour, true);
       const approx = approximateQuadrilateral(contour, perimeter);
-      if (approx === null) {
-        continue;
-      }
+      if (approx === null) continue;
 
       try {
         const corners = readQuadrilateral(approx);
-        if (!isStableQuad(corners)) {
-          continue;
-        }
+        if (!isStableCardQuad(corners)) continue;
 
         const quadArea = polygonArea(corners);
         const quadPerimeter = edgeLengths(corners).reduce((sum, edge) => sum + edge, 0);
         const contourQuadFill = area / Math.max(quadArea, 1);
         const perimeterExcess = perimeter / Math.max(quadPerimeter, 1);
-        const cardAspect = getCardAspect(corners);
-        const edgeSimilarity = oppositeEdgeSimilarity(corners);
-        const angleCosine = maxAdjacentEdgeCosine(corners);
+        const { cardAspect, edgeSimilarity, angleCosine } = summarizeCardQuad(corners);
 
         if (
           contourQuadFill < MIN_CONTOUR_QUAD_FILL ||
@@ -285,20 +128,11 @@ function collectQuadrilaterals(
           cardAspect > MAX_CARD_ASPECT ||
           edgeSimilarity < MIN_OPPOSITE_EDGE_RATIO ||
           angleCosine > MAX_ADJACENT_EDGE_COSINE
-        ) {
-          continue;
-        }
+        ) continue;
 
         const rect = OpenCV.boundingRect(approx);
         try {
-          if (rect.width >= DETECTOR_WIDTH * 0.98 || rect.height >= DETECTOR_HEIGHT * 0.98) {
-            continue;
-          }
-
-          const aspectScore = 1 - Math.min(1, Math.abs(cardAspect - EXPECTED_CARD_ASPECT) / 0.22);
-          const fillScore = 1 - Math.min(1, Math.abs(1 - contourQuadFill));
-          const shapeScore = aspectScore * 0.4 + edgeSimilarity * 0.25 + fillScore * 0.2 + (1 - angleCosine) * 0.15;
-
+          if (rect.width >= DETECTOR_WIDTH * 0.98 || rect.height >= DETECTOR_HEIGHT * 0.98) continue;
           scored.push({
             corners,
             area,
@@ -308,7 +142,13 @@ function collectQuadrilaterals(
             height: rect.height,
             cardAspect,
             source,
-            shapeScore,
+            shapeScore: scoreCardShape(
+              cardAspect,
+              EXPECTED_CARD_ASPECT,
+              contourQuadFill,
+              edgeSimilarity,
+              angleCosine
+            ),
           });
         } finally {
           rect.release();
@@ -322,6 +162,10 @@ function collectQuadrilaterals(
   }
 }
 
+/**
+ * Detects card-like contours and perspective-normalizes each accepted candidate from one camera frame.
+ * The returned Mats are owned by the caller and must be released.
+ */
 export function detectNormalizedCardCandidates(
   frame: Frame,
   resizer: Resizer
@@ -342,26 +186,14 @@ export function detectNormalizedCardCandidates(
   try {
     const pixels = new Uint8Array(resized.getPixelBuffer());
     const input = Mat.createFromBuffer('uint8', DETECTOR_HEIGHT, DETECTOR_WIDTH, 3, pixels);
-
     try {
       OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
       OpenCV.GaussianBlur(gray, blurred, blurKernel, 0);
       OpenCV.Canny(blurred, edges, 40, 120);
-
-      OpenCV.findContours(
-        edges,
-        rawContours,
-        RetrievalModes.RETR_LIST,
-        ContourApproximationModes.CHAIN_APPROX_SIMPLE
-      );
+      OpenCV.findContours(edges, rawContours, RetrievalModes.RETR_LIST, ContourApproximationModes.CHAIN_APPROX_SIMPLE);
 
       OpenCV.morphologyEx(edges, closedEdges, MorphTypes.MORPH_CLOSE, closeKernel);
-      OpenCV.findContours(
-        closedEdges,
-        closedContours,
-        RetrievalModes.RETR_LIST,
-        ContourApproximationModes.CHAIN_APPROX_SIMPLE
-      );
+      OpenCV.findContours(closedEdges, closedContours, RetrievalModes.RETR_LIST, ContourApproximationModes.CHAIN_APPROX_SIMPLE);
 
       const imageArea = DETECTOR_WIDTH * DETECTOR_HEIGHT;
       const scored: ScoredQuadrilateral[] = [];
@@ -369,24 +201,16 @@ export function detectNormalizedCardCandidates(
       collectQuadrilaterals(closedContours, imageArea, 'closed', scored);
 
       scored.sort((a, b) => {
-        if (a.source !== b.source) {
-          return a.source === 'raw' ? -1 : 1;
-        }
+        if (a.source !== b.source) return a.source === 'raw' ? -1 : 1;
         const qualityDelta = b.shapeScore - a.shapeScore;
-        if (Math.abs(qualityDelta) > 0.04) {
-          return qualityDelta;
-        }
+        if (Math.abs(qualityDelta) > 0.04) return qualityDelta;
         return b.area - a.area;
       });
 
       const accepted: ScoredQuadrilateral[] = [];
       for (const candidate of scored) {
-        if (!overlapsExisting(candidate, accepted)) {
-          accepted.push(candidate);
-        }
-        if (accepted.length >= MAX_CANDIDATES) {
-          break;
-        }
+        if (!overlapsAcceptedQuad(candidate, accepted)) accepted.push(candidate);
+        if (accepted.length >= MAX_CANDIDATES) break;
       }
 
       const normalizedCandidates: OpenCvCardCandidate[] = [];
@@ -395,10 +219,7 @@ export function detectNormalizedCardCandidates(
           try {
             const normalizedImage = normalizeCardPerspective(input, candidate.corners);
             if (normalizedImage.rows > 0 && normalizedImage.cols > 0) {
-              normalizedCandidates.push({
-                detectorCorners: candidate.corners,
-                normalizedImage,
-              });
+              normalizedCandidates.push({ detectorCorners: candidate.corners, normalizedImage });
             } else {
               normalizedImage.release();
             }
@@ -408,9 +229,7 @@ export function detectNormalizedCardCandidates(
         }
         return normalizedCandidates;
       } catch (error) {
-        for (const candidate of normalizedCandidates) {
-          candidate.normalizedImage.release();
-        }
+        for (const candidate of normalizedCandidates) candidate.normalizedImage.release();
         throw error;
       }
     } finally {
@@ -430,15 +249,13 @@ export function detectNormalizedCardCandidates(
   }
 }
 
+/** Detects only card corner quadrilaterals and releases the intermediate normalized Mats. */
 export function detectCardQuadrilaterals(frame: Frame, resizer: Resizer): Quadrilateral[] {
   'worklet';
-
   const candidates = detectNormalizedCardCandidates(frame, resizer);
   try {
     return candidates.map((candidate) => candidate.detectorCorners);
   } finally {
-    for (const candidate of candidates) {
-      candidate.normalizedImage.release();
-    }
+    for (const candidate of candidates) candidate.normalizedImage.release();
   }
 }
