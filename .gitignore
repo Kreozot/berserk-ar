@@ -3,7 +3,6 @@ node_modules/
 .expo-shared/
 android/
 ios/
-.test-dist/
 *.log
 .DS_Store
 .env
