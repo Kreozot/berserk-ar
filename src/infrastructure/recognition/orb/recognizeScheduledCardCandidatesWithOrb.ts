@@ -1,22 +1,23 @@
-import type { Quadrilateral, RecognitionResult } from '../../../core/vision/types';
+import type { RecognitionResult } from '../../../core/vision/types';
+import {
+  boundsOf,
+  median,
+  normalizedCenterDistance,
+  sizeSimilarity,
+  type Bounds,
+} from '../../../core/vision/geometry';
 import type { OpenCvCardCandidate } from '../../detection/opencv/detectCardQuadrilaterals';
+import {
+  isSceneChurned,
+  isSceneShifted,
+  scoreSchedulerMatch,
+  shouldRunOrbForTrack,
+} from './schedulerPolicy';
 import {
   recognizeCardCandidatesWithOrbNow,
   type OrbRecognitionDiagnostics,
   type RecognizedCardCandidate,
 } from './recognizeCardCandidatesWithOrbNow';
-
-type Bounds = {
-  readonly left: number;
-  readonly top: number;
-  readonly right: number;
-  readonly bottom: number;
-  readonly width: number;
-  readonly height: number;
-  readonly centerX: number;
-  readonly centerY: number;
-  readonly diagonal: number;
-};
 
 type SchedulerTrack = {
   readonly trackId: number;
@@ -50,91 +51,9 @@ export type ScheduledRecognitionBatch = {
 
 const RECHECK_INTERVAL_FRAMES = 5;
 const MAX_MISSED_FRAMES = 4;
-const MIN_IOU = 0.02;
-const MAX_NORMALIZED_CENTER_DISTANCE = 1.2;
-const FORCE_RECHECK_CENTER_DISTANCE = 0.22;
-const FORCE_RECHECK_SIZE_SIMILARITY = 0.72;
-const SCENE_SHIFT_MEDIAN_DISTANCE = 0.18;
-const SCENE_SHIFT_MIN_MATCHES = 2;
-const SCENE_CHURN_MIN_TRACKS = 3;
-const SCENE_CHURN_MATCH_RATIO = 0.45;
 const SCENE_FORCE_ORB_FRAMES = 2;
 
-function boundsOf(corners: Quadrilateral): Bounds {
-  'worklet';
-  let left = corners[0].x;
-  let right = corners[0].x;
-  let top = corners[0].y;
-  let bottom = corners[0].y;
-  for (let index = 1; index < corners.length; index += 1) {
-    const point = corners[index];
-    left = Math.min(left, point.x);
-    right = Math.max(right, point.x);
-    top = Math.min(top, point.y);
-    bottom = Math.max(bottom, point.y);
-  }
-  const width = Math.max(1, right - left);
-  const height = Math.max(1, bottom - top);
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    width,
-    height,
-    centerX: (left + right) / 2,
-    centerY: (top + bottom) / 2,
-    diagonal: Math.sqrt(width * width + height * height),
-  };
-}
-
-function intersectionOverUnion(a: Bounds, b: Bounds): number {
-  'worklet';
-  const left = Math.max(a.left, b.left);
-  const top = Math.max(a.top, b.top);
-  const right = Math.min(a.right, b.right);
-  const bottom = Math.min(a.bottom, b.bottom);
-  const width = Math.max(0, right - left);
-  const height = Math.max(0, bottom - top);
-  const intersection = width * height;
-  const union = a.width * a.height + b.width * b.height - intersection;
-  return union <= 0 ? 0 : intersection / union;
-}
-
-function normalizedCenterDistance(a: Bounds, b: Bounds): number {
-  'worklet';
-  const dx = a.centerX - b.centerX;
-  const dy = a.centerY - b.centerY;
-  return Math.sqrt(dx * dx + dy * dy) / Math.max((a.diagonal + b.diagonal) / 2, 1);
-}
-
-function sizeSimilarity(a: Bounds, b: Bounds): number {
-  'worklet';
-  const widthRatio = Math.min(a.width, b.width) / Math.max(a.width, b.width);
-  const heightRatio = Math.min(a.height, b.height) / Math.max(a.height, b.height);
-  return (widthRatio + heightRatio) / 2;
-}
-
-function matchScore(trackBounds: Bounds, candidateBounds: Bounds): number | null {
-  'worklet';
-  const iou = intersectionOverUnion(trackBounds, candidateBounds);
-  const centerDistance = normalizedCenterDistance(trackBounds, candidateBounds);
-  if (iou < MIN_IOU && centerDistance > MAX_NORMALIZED_CENTER_DISTANCE) return null;
-  const centerScore = Math.max(0, 1 - centerDistance / MAX_NORMALIZED_CENTER_DISTANCE);
-  const shapeScore = sizeSimilarity(trackBounds, candidateBounds);
-  return iou * 0.5 + centerScore * 0.35 + shapeScore * 0.15;
-}
-
-function median(values: number[]): number {
-  'worklet';
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle];
-}
-
+/** Returns the persistent scheduler state stored inside the frame-output worklet runtime. */
 function getState(): SchedulerState {
   'worklet';
   const scope = globalThis as WorkletGlobal;
@@ -150,6 +69,7 @@ function getState(): SchedulerState {
   return created;
 }
 
+/** Creates a non-evaluated result so the UI tracker can retain identity without counting a stale vote. */
 function skippedResult(
   candidate: OpenCvCardCandidate,
   cached: RecognizedCardCandidate
@@ -163,6 +83,10 @@ function skippedResult(
   };
 }
 
+/**
+ * Runs ORB only for candidates that need a fresh evaluation while preserving candidate order.
+ * Stable recognized tracks are rechecked periodically or immediately after geometry/scene changes.
+ */
 export function recognizeScheduledCardCandidatesWithOrb(
   candidates: readonly OpenCvCardCandidate[]
 ): ScheduledRecognitionBatch {
@@ -181,7 +105,7 @@ export function recognizeScheduledCardCandidatesWithOrb(
   const pairs: PairScore[] = [];
   for (let trackIndex = 0; trackIndex < state.tracks.length; trackIndex += 1) {
     for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
-      const score = matchScore(state.tracks[trackIndex].bounds, candidateBounds[candidateIndex]);
+      const score = scoreSchedulerMatch(state.tracks[trackIndex].bounds, candidateBounds[candidateIndex]);
       if (score !== null) pairs.push({ trackIndex, candidateIndex, score });
     }
   }
@@ -202,18 +126,10 @@ export function recognizeScheduledCardCandidatesWithOrb(
   const matchedMotion = acceptedPairs.map((pair) =>
     normalizedCenterDistance(state.tracks[pair.trackIndex].bounds, candidateBounds[pair.candidateIndex])
   );
-  const medianSceneMotion = median(matchedMotion);
-  const sceneShifted =
-    acceptedPairs.length >= SCENE_SHIFT_MIN_MATCHES &&
-    medianSceneMotion >= SCENE_SHIFT_MEDIAN_DISTANCE;
-  const comparableCount = Math.max(1, Math.min(previousTrackCount, candidates.length));
-  const matchRatio = acceptedPairs.length / comparableCount;
-  const sceneChurned =
-    previousTrackCount >= SCENE_CHURN_MIN_TRACKS &&
-    candidates.length >= SCENE_CHURN_MIN_TRACKS &&
-    matchRatio < SCENE_CHURN_MATCH_RATIO;
-
-  if (sceneShifted || sceneChurned) {
+  if (
+    isSceneShifted(median(matchedMotion), acceptedPairs.length) ||
+    isSceneChurned(previousTrackCount, candidates.length, acceptedPairs.length)
+  ) {
     state.forceOrbFramesRemaining = SCENE_FORCE_ORB_FRAMES;
   }
 
@@ -243,11 +159,14 @@ export function recognizeScheduledCardCandidatesWithOrb(
     const centerDistance = normalizedCenterDistance(track.bounds, currentBounds);
     const currentSizeSimilarity = sizeSimilarity(track.bounds, currentBounds);
     const cachedRecognized = track.cached?.recognition.status === 'recognized';
-    const dueForRecheck = state.frameIndex - track.lastOrbFrame >= RECHECK_INTERVAL_FRAMES;
-    const geometryChanged =
-      centerDistance >= FORCE_RECHECK_CENTER_DISTANCE ||
-      currentSizeSimilarity <= FORCE_RECHECK_SIZE_SIMILARITY;
-    const shouldRunOrb = forceOrbAll || !cachedRecognized || dueForRecheck || geometryChanged;
+    const shouldRunOrb = shouldRunOrbForTrack({
+      forceOrbAll,
+      cachedRecognized,
+      framesSinceLastOrb: state.frameIndex - track.lastOrbFrame,
+      recheckIntervalFrames: RECHECK_INTERVAL_FRAMES,
+      centerDistance,
+      currentSizeSimilarity,
+    });
 
     track.bounds = currentBounds;
     track.missedFrames = 0;
@@ -292,9 +211,7 @@ export function recognizeScheduledCardCandidatesWithOrb(
     }
   }
 
-  if (state.forceOrbFramesRemaining > 0) {
-    state.forceOrbFramesRemaining -= 1;
-  }
+  if (state.forceOrbFramesRemaining > 0) state.forceOrbFramesRemaining -= 1;
   state.tracks = state.tracks.filter((track) => track.missedFrames <= MAX_MISSED_FRAMES);
   return { results, orbCandidates: selectedCandidates.length };
 }
