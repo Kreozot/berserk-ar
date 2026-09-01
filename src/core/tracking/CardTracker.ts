@@ -3,6 +3,7 @@ import type { Quadrilateral, RecognitionResult } from '../vision/types';
 export type TrackObservation = {
   readonly corners: Quadrilateral;
   readonly recognition: RecognitionResult;
+  readonly evaluated: boolean;
 };
 
 export type TrackedObservation = {
@@ -110,7 +111,15 @@ function matchScore(track: TrackState, observationBounds: Bounds): number | null
   return iou * 0.5 + centerScore * 0.35 + shapeScore * 0.15;
 }
 
-function updateIdentity(track: TrackState, recognition: RecognitionResult): boolean {
+function updateIdentity(
+  track: TrackState,
+  recognition: RecognitionResult,
+  evaluated: boolean
+): boolean {
+  if (!evaluated) {
+    return track.cardId !== null;
+  }
+
   if (recognition.status === 'unknown') {
     track.unknownStreak += 1;
     track.challengerCardId = null;
@@ -228,7 +237,7 @@ export class CardTracker {
       track.corners = observation.corners;
       track.bounds = observationBounds[observationIndex];
       track.missedFrames = 0;
-      const retainedIdentity = updateIdentity(track, observation.recognition);
+      const retainedIdentity = updateIdentity(track, observation.recognition, observation.evaluated);
 
       const recognition: RecognitionResult =
         track.cardId === null
