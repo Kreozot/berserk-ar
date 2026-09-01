@@ -11,7 +11,7 @@
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
     "test:build": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
-    "test": "npm run test:build && node --test tests/*.test.cjs"
+    "test": "npm run test:build && node --test"
   },
   "dependencies": {
     "expo": "~57.0.9",
