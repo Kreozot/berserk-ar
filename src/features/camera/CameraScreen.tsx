@@ -6,7 +6,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { getCardById, type CardDefinition } from '../../catalog/cards';
 import { CardTracker } from '../../core/tracking/CardTracker';
-import type { Point, Quadrilateral, RecognitionResult } from '../../core/vision/types';
+import type { Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
   DETECTOR_HEIGHT,
   DETECTOR_WIDTH,
@@ -19,6 +19,7 @@ import {
   type RecognizedCardCandidate,
 } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { CardModal } from '../card/CardModal';
+import { compactCvError, mapDetectorPointToPreview, type PreviewSize } from './cameraGeometry';
 import { DetectedCardOverlay } from './DetectedCardOverlay';
 
 type ViewDetection = {
@@ -27,11 +28,6 @@ type ViewDetection = {
   readonly recognition: RecognitionResult;
   readonly diagnostics: OrbRecognitionDiagnostics;
   readonly retainedIdentity: boolean;
-};
-
-type PreviewSize = {
-  readonly width: number;
-  readonly height: number;
 };
 
 type CvWorkletGlobal = typeof globalThis & {
@@ -56,32 +52,10 @@ type CameraFeedProps = {
   readonly onCvStats: CvStatsLogger;
 };
 
-function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
-  const rotatedPoint = {
-    x: DETECTOR_WIDTH - point.x,
-    y: DETECTOR_HEIGHT - point.y,
-  };
-
-  const scale = Math.max(preview.width / DETECTOR_WIDTH, preview.height / DETECTOR_HEIGHT);
-  const scaledWidth = DETECTOR_WIDTH * scale;
-  const scaledHeight = DETECTOR_HEIGHT * scale;
-  const cropX = (scaledWidth - preview.width) / 2;
-  const cropY = (scaledHeight - preview.height) / 2;
-
-  return {
-    x: rotatedPoint.x * scale - cropX,
-    y: rotatedPoint.y * scale - cropY,
-  };
-}
-
-function compactCvError(stage: string, error: unknown): string {
-  'worklet';
-
-  const text = String(error);
-  const tail = text.length > 420 ? `…${text.slice(-420)}` : text;
-  return `${stage}: ${tail}`;
-}
-
+/**
+ * Owns the stable VisionCamera/frame-output lifecycle.
+ * Keeping it memoized isolates native camera configuration from overlay state updates.
+ */
 const CameraFeed = memo(function CameraFeed({
   isActive,
   onDetections,
@@ -165,12 +139,8 @@ const CameraFeed = memo(function CameraFeed({
           scheduleOnRN(onCvError, compactCvError('ORB', error));
         }
       } finally {
-        for (const candidate of candidates) {
-          candidate.normalizedImage.release();
-        }
-        if (!frameDisposed) {
-          frame.dispose();
-        }
+        for (const candidate of candidates) candidate.normalizedImage.release();
+        if (!frameDisposed) frame.dispose();
       }
     },
   });
@@ -194,6 +164,10 @@ const CameraFeed = memo(function CameraFeed({
   );
 });
 
+/**
+ * Main camera experience: requests permission, tracks recognized cards, renders overlays,
+ * and opens the selected card while keeping camera lifecycle isolated in CameraFeed.
+ */
 export function CameraScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
@@ -203,14 +177,10 @@ export function CameraScreen() {
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const trackerRef = useRef<CardTracker | null>(null);
-  if (trackerRef.current === null) {
-    trackerRef.current = new CardTracker();
-  }
+  if (trackerRef.current === null) trackerRef.current = new CardTracker();
 
   useEffect(() => {
-    if (!hasPermission) {
-      void requestPermission();
-    }
+    if (!hasPermission) void requestPermission();
   }, [hasPermission, requestPermission]);
 
   useEffect(() => {
@@ -234,9 +204,7 @@ export function CameraScreen() {
 
   const showDetections = useCallback(
     (cameraDetections: RecognizedCardCandidate[]) => {
-      if (previewSize === null || trackerRef.current === null) {
-        return;
-      }
+      if (previewSize === null || trackerRef.current === null) return;
 
       const tracked = trackerRef.current.update(
         cameraDetections.map((detection) => ({
@@ -251,10 +219,10 @@ export function CameraScreen() {
         return {
           trackId: track.trackId,
           corners: [
-            mapDetectorPointToPreview(track.corners[0], previewSize),
-            mapDetectorPointToPreview(track.corners[1], previewSize),
-            mapDetectorPointToPreview(track.corners[2], previewSize),
-            mapDetectorPointToPreview(track.corners[3], previewSize),
+            mapDetectorPointToPreview(track.corners[0], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
+            mapDetectorPointToPreview(track.corners[1], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
+            mapDetectorPointToPreview(track.corners[2], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
+            mapDetectorPointToPreview(track.corners[3], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
           ],
           recognition: track.recognition,
           diagnostics: source.diagnostics,
@@ -277,9 +245,7 @@ export function CameraScreen() {
 
   const showCameraError = useCallback(
     (message: string) => {
-      if (appState === 'active') {
-        setCameraError(message);
-      }
+      if (appState === 'active') setCameraError(message);
     },
     [appState]
   );
@@ -337,7 +303,6 @@ export function CameraScreen() {
           detection.recognition.status === 'recognized'
             ? (getCardById(detection.recognition.cardId) ?? null)
             : null;
-
         return (
           <DetectedCardOverlay
             key={detection.trackId}
@@ -363,9 +328,7 @@ export function CameraScreen() {
 
       {visibleError ? (
         <View pointerEvents="none" style={styles.errorBadge}>
-          <Text numberOfLines={5} style={styles.errorText}>
-            CV ERROR: {visibleError}
-          </Text>
+          <Text numberOfLines={5} style={styles.errorText}>CV ERROR: {visibleError}</Text>
         </View>
       ) : null}
 
@@ -375,10 +338,7 @@ export function CameraScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
+  container: { flex: 1, backgroundColor: '#000000' },
   permissionContainer: {
     flex: 1,
     alignItems: 'center',
@@ -386,12 +346,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#111111',
     paddingHorizontal: 32,
   },
-  permissionTitle: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
+  permissionTitle: { color: '#ffffff', fontSize: 22, fontWeight: '700', textAlign: 'center' },
   permissionText: {
     marginTop: 12,
     color: '#bbbbbb',
@@ -406,11 +361,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 12,
   },
-  permissionButtonText: {
-    color: '#111111',
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  permissionButtonText: { color: '#111111', fontSize: 15, fontWeight: '700' },
   debugBadge: {
     position: 'absolute',
     top: 48,
@@ -421,12 +372,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  debugText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
+  debugText: { color: '#ffffff', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   debugSubtext: {
     marginTop: 3,
     color: '#cccccc',
@@ -444,9 +390,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  errorText: {
-    color: '#ffffff',
-    fontSize: 11,
-    lineHeight: 15,
-  },
+  errorText: { color: '#ffffff', fontSize: 11, lineHeight: 15 },
 });
