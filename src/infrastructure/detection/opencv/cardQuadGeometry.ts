@@ -26,6 +26,7 @@ export const MIN_QUAD_AREA = 90;
 
 /** Checks finite coordinates, minimum edge length, area and convexity for a candidate quad. */
 export function isStableCardQuad(corners: Quadrilateral): boolean {
+  'worklet';
   for (const point of corners) {
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
   }
@@ -35,6 +36,7 @@ export function isStableCardQuad(corners: Quadrilateral): boolean {
 
 /** Computes the geometry metrics used by detector filtering and scoring. */
 export function summarizeCardQuad(corners: Quadrilateral): CardQuadSummary {
+  'worklet';
   return {
     cardAspect: quadrilateralAspect(corners),
     edgeSimilarity: oppositeEdgeSimilarity(corners),
@@ -50,6 +52,7 @@ export function scoreCardShape(
   edgeSimilarity: number,
   angleCosine: number
 ): number {
+  'worklet';
   const aspectScore = 1 - Math.min(1, Math.abs(cardAspect - expectedCardAspect) / 0.22);
   const fillScore = 1 - Math.min(1, Math.abs(1 - contourQuadFill));
   return aspectScore * 0.4 + edgeSimilarity * 0.25 + fillScore * 0.2 + (1 - angleCosine) * 0.15;
@@ -60,6 +63,7 @@ export function overlapsAcceptedQuad(
   candidate: QuadCenterSize,
   accepted: readonly QuadCenterSize[]
 ): boolean {
+  'worklet';
   return accepted.some((other) => {
     const dx = candidate.centerX - other.centerX;
     const dy = candidate.centerY - other.centerY;
@@ -71,6 +75,7 @@ export function overlapsAcceptedQuad(
 
 /** Converts four plain points into a quadrilateral tuple after validating the count. */
 export function asQuadrilateral(points: readonly Point[]): Quadrilateral {
+  'worklet';
   if (points.length !== 4) throw new Error(`Expected 4 points, received ${points.length}`);
   return [points[0], points[1], points[2], points[3]];
 }
