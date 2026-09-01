@@ -30,6 +30,7 @@ type SchedulerState = {
   frameIndex: number;
   nextTrackId: number;
   tracks: SchedulerTrack[];
+  forceOrbFramesRemaining: number;
 };
 
 type PairScore = {
@@ -51,8 +52,13 @@ const RECHECK_INTERVAL_FRAMES = 5;
 const MAX_MISSED_FRAMES = 4;
 const MIN_IOU = 0.02;
 const MAX_NORMALIZED_CENTER_DISTANCE = 1.2;
-const FORCE_RECHECK_CENTER_DISTANCE = 0.32;
+const FORCE_RECHECK_CENTER_DISTANCE = 0.22;
 const FORCE_RECHECK_SIZE_SIMILARITY = 0.72;
+const SCENE_SHIFT_MEDIAN_DISTANCE = 0.18;
+const SCENE_SHIFT_MIN_MATCHES = 2;
+const SCENE_CHURN_MIN_TRACKS = 3;
+const SCENE_CHURN_MATCH_RATIO = 0.45;
+const SCENE_FORCE_ORB_FRAMES = 2;
 
 function boundsOf(corners: Quadrilateral): Bounds {
   'worklet';
@@ -119,12 +125,27 @@ function matchScore(trackBounds: Bounds, candidateBounds: Bounds): number | null
   return iou * 0.5 + centerScore * 0.35 + shapeScore * 0.15;
 }
 
+function median(values: number[]): number {
+  'worklet';
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
 function getState(): SchedulerState {
   'worklet';
   const scope = globalThis as WorkletGlobal;
   const cached = scope.__berserkOrbSchedulerState;
   if (cached != null) return cached;
-  const created: SchedulerState = { frameIndex: 0, nextTrackId: 1, tracks: [] };
+  const created: SchedulerState = {
+    frameIndex: 0,
+    nextTrackId: 1,
+    tracks: [],
+    forceOrbFramesRemaining: 0,
+  };
   scope.__berserkOrbSchedulerState = created;
   return created;
 }
@@ -138,6 +159,7 @@ function skippedResult(
     detectorCorners: candidate.detectorCorners,
     recognition: { status: 'unknown', confidence: 0 } as RecognitionResult,
     diagnostics: cached.diagnostics,
+    evaluated: false,
   };
 }
 
@@ -154,6 +176,7 @@ export function recognizeScheduledCardCandidatesWithOrb(
     return { results: [], orbCandidates: 0 };
   }
 
+  const previousTrackCount = state.tracks.length;
   const candidateBounds = candidates.map((candidate) => boundsOf(candidate.detectorCorners));
   const pairs: PairScore[] = [];
   for (let trackIndex = 0; trackIndex < state.tracks.length; trackIndex += 1) {
@@ -167,11 +190,31 @@ export function recognizeScheduledCardCandidatesWithOrb(
   const matchedTracks = new Set<number>();
   const matchedCandidates = new Set<number>();
   const candidateToTrack = new Map<number, SchedulerTrack>();
+  const acceptedPairs: PairScore[] = [];
   for (const pair of pairs) {
     if (matchedTracks.has(pair.trackIndex) || matchedCandidates.has(pair.candidateIndex)) continue;
     matchedTracks.add(pair.trackIndex);
     matchedCandidates.add(pair.candidateIndex);
     candidateToTrack.set(pair.candidateIndex, state.tracks[pair.trackIndex]);
+    acceptedPairs.push(pair);
+  }
+
+  const matchedMotion = acceptedPairs.map((pair) =>
+    normalizedCenterDistance(state.tracks[pair.trackIndex].bounds, candidateBounds[pair.candidateIndex])
+  );
+  const medianSceneMotion = median(matchedMotion);
+  const sceneShifted =
+    acceptedPairs.length >= SCENE_SHIFT_MIN_MATCHES &&
+    medianSceneMotion >= SCENE_SHIFT_MEDIAN_DISTANCE;
+  const comparableCount = Math.max(1, Math.min(previousTrackCount, candidates.length));
+  const matchRatio = acceptedPairs.length / comparableCount;
+  const sceneChurned =
+    previousTrackCount >= SCENE_CHURN_MIN_TRACKS &&
+    candidates.length >= SCENE_CHURN_MIN_TRACKS &&
+    matchRatio < SCENE_CHURN_MATCH_RATIO;
+
+  if (sceneShifted || sceneChurned) {
+    state.forceOrbFramesRemaining = SCENE_FORCE_ORB_FRAMES;
   }
 
   for (let trackIndex = 0; trackIndex < state.tracks.length; trackIndex += 1) {
@@ -181,6 +224,7 @@ export function recognizeScheduledCardCandidatesWithOrb(
   const selectedCandidates: OpenCvCardCandidate[] = [];
   const selectedIndexes: number[] = [];
   const tracksForCandidate: SchedulerTrack[] = [];
+  const forceOrbAll = state.forceOrbFramesRemaining > 0;
 
   for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
     const currentBounds = candidateBounds[candidateIndex];
@@ -203,7 +247,7 @@ export function recognizeScheduledCardCandidatesWithOrb(
     const geometryChanged =
       centerDistance >= FORCE_RECHECK_CENTER_DISTANCE ||
       currentSizeSimilarity <= FORCE_RECHECK_SIZE_SIMILARITY;
-    const shouldRunOrb = !cachedRecognized || dueForRecheck || geometryChanged;
+    const shouldRunOrb = forceOrbAll || !cachedRecognized || dueForRecheck || geometryChanged;
 
     track.bounds = currentBounds;
     track.missedFrames = 0;
@@ -243,10 +287,14 @@ export function recognizeScheduledCardCandidatesWithOrb(
           winnerMargin: 0,
           winnerRatio: 0,
         } as OrbRecognitionDiagnostics,
+        evaluated: false,
       });
     }
   }
 
+  if (state.forceOrbFramesRemaining > 0) {
+    state.forceOrbFramesRemaining -= 1;
+  }
   state.tracks = state.tracks.filter((track) => track.missedFrames <= MAX_MISSED_FRAMES);
   return { results, orbCandidates: selectedCandidates.length };
 }
