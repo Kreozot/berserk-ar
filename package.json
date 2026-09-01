@@ -9,7 +9,9 @@
     "android:device": "expo run:android --device",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:build": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
+    "test": "npm run test:build && node --test tests"
   },
   "dependencies": {
     "expo": "~57.0.9",
