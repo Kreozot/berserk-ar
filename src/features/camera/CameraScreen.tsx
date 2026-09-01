@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
 import { Camera, useCameraPermission, useFrameOutput } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
@@ -12,6 +12,7 @@ import {
   detectNormalizedCardCandidates,
 } from '../../infrastructure/detection/opencv/detectCardQuadrilaterals';
 import {
+  getOrbRuntimeCacheInitCount,
   recognizeCardCandidatesWithOrb,
   type OrbRecognitionDiagnostics,
   type RecognizedCardCandidate,
@@ -30,10 +31,29 @@ type PreviewSize = {
   readonly height: number;
 };
 
+type CvWorkletGlobal = typeof globalThis & {
+  __berserkCvProcessedFrames?: number;
+};
+
+type CvStatsLogger = (
+  frameIndex: number,
+  candidates: number,
+  recognized: number,
+  detectMs: number,
+  orbMs: number,
+  totalMs: number,
+  cacheInitCount: number
+) => void;
+
+type CameraFeedProps = {
+  readonly isActive: boolean;
+  readonly onDetections: (detections: RecognizedCardCandidate[]) => void;
+  readonly onCvError: (message: string) => void;
+  readonly onCameraError: (message: string) => void;
+  readonly onCvStats: CvStatsLogger;
+};
+
 function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
-  // Device calibration showed the detector image is 180° opposite to the
-  // displayed back-camera preview. Rotate around the detector center, then
-  // apply the same centered `cover` transform used by the preview.
   const rotatedPoint = {
     x: DETECTOR_WIDTH - point.x,
     y: DETECTOR_HEIGHT - point.y,
@@ -51,14 +71,21 @@ function mapDetectorPointToPreview(point: Point, preview: PreviewSize): Point {
   };
 }
 
-export function CameraScreen() {
-  const { hasPermission, requestPermission } = useCameraPermission();
-  const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
-  const [detections, setDetections] = useState<ViewDetection[]>([]);
-  const [detectorError, setDetectorError] = useState<string | null>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
-  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+function compactCvError(stage: string, error: unknown): string {
+  'worklet';
+
+  const text = String(error);
+  const tail = text.length > 420 ? `…${text.slice(-420)}` : text;
+  return `${stage}: ${tail}`;
+}
+
+const CameraFeed = memo(function CameraFeed({
+  isActive,
+  onDetections,
+  onCvError,
+  onCameraError,
+  onCvStats,
+}: CameraFeedProps) {
   const { resizer, error: resizerError } = useResizer({
     width: DETECTOR_WIDTH,
     height: DETECTOR_HEIGHT,
@@ -67,6 +94,111 @@ export function CameraScreen() {
     pixelLayout: 'interleaved',
     scaleMode: 'cover',
   });
+
+  useEffect(() => {
+    console.log('[BerserkCamera] mount');
+    return () => console.log('[BerserkCamera] unmount');
+  }, []);
+
+  useEffect(() => {
+    if (resizerError != null) {
+      onCvError(`RESIZER: ${String(resizerError)}`);
+    }
+  }, [onCvError, resizerError]);
+
+  const frameOutput = useFrameOutput({
+    pixelFormat: 'yuv',
+    targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
+    enablePreviewSizedOutputBuffers: true,
+    enablePhysicalBufferRotation: false,
+    dropFramesWhileBusy: true,
+    onFrame(frame) {
+      'worklet';
+
+      if (resizer == null) {
+        frame.dispose();
+        return;
+      }
+
+      const startedAt = Date.now();
+      let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
+      let frameDisposed = false;
+      try {
+        try {
+          candidates = detectNormalizedCardCandidates(frame, resizer);
+        } catch (error) {
+          scheduleOnRN(onCvError, compactCvError('DETECT/WARP', error));
+          return;
+        }
+
+        const afterDetect = Date.now();
+        frame.dispose();
+        frameDisposed = true;
+
+        try {
+          const recognized = recognizeCardCandidatesWithOrb(candidates);
+          const finishedAt = Date.now();
+          scheduleOnRN(onDetections, recognized);
+
+          const scope = globalThis as CvWorkletGlobal;
+          const frameIndex = (scope.__berserkCvProcessedFrames ?? 0) + 1;
+          scope.__berserkCvProcessedFrames = frameIndex;
+          if (frameIndex % 10 === 0) {
+            const recognizedCount = recognized.filter(
+              (candidate) => candidate.recognition.status === 'recognized'
+            ).length;
+            scheduleOnRN(
+              onCvStats,
+              frameIndex,
+              candidates.length,
+              recognizedCount,
+              afterDetect - startedAt,
+              finishedAt - afterDetect,
+              finishedAt - startedAt,
+              getOrbRuntimeCacheInitCount()
+            );
+          }
+        } catch (error) {
+          scheduleOnRN(onCvError, compactCvError('ORB', error));
+        }
+      } finally {
+        for (const candidate of candidates) {
+          candidate.normalizedImage.release();
+        }
+        if (!frameDisposed) {
+          frame.dispose();
+        }
+      }
+    },
+  });
+
+  const outputs = useMemo(() => [frameOutput], [frameOutput]);
+  const handleCameraError = useCallback(
+    (error: { message: string }) => onCameraError(error.message),
+    [onCameraError]
+  );
+
+  return (
+    <Camera
+      device="back"
+      isActive={isActive}
+      onError={handleCameraError}
+      orientationSource="interface"
+      outputs={outputs}
+      resizeMode="cover"
+      style={StyleSheet.absoluteFill}
+    />
+  );
+});
+
+export function CameraScreen() {
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const [selectedCard, setSelectedCard] = useState<CardDefinition | null>(null);
+  const [detections, setDetections] = useState<ViewDetection[]>([]);
+  const [detectorError, setDetectorError] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
     if (!hasPermission) {
@@ -121,44 +253,24 @@ export function CameraScreen() {
     setDetections((current) => (current.length === 0 ? current : []));
   }, []);
 
-  const frameOutput = useFrameOutput({
-    pixelFormat: 'yuv',
-    targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
-    enablePreviewSizedOutputBuffers: true,
-    enablePhysicalBufferRotation: false,
-    dropFramesWhileBusy: true,
-    onFrame(frame) {
-      'worklet';
-
-      if (resizer == null) {
-        frame.dispose();
-        return;
-      }
-
-      let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
-      let frameDisposed = false;
-      try {
-        candidates = detectNormalizedCardCandidates(frame, resizer);
-
-        // Release the scarce Camera buffer before ORB starts. The normalized
-        // Mats are independent copies and remain valid for matching.
-        frame.dispose();
-        frameDisposed = true;
-
-        const recognized = recognizeCardCandidatesWithOrb(candidates);
-        scheduleOnRN(showDetections, recognized);
-      } catch (error) {
-        scheduleOnRN(showDetectorError, String(error));
-      } finally {
-        for (const candidate of candidates) {
-          candidate.normalizedImage.release();
-        }
-        if (!frameDisposed) {
-          frame.dispose();
-        }
+  const showCameraError = useCallback(
+    (message: string) => {
+      if (appState === 'active') {
+        setCameraError(message);
       }
     },
-  });
+    [appState]
+  );
+
+  const logCvStats = useCallback<CvStatsLogger>(
+    (frameIndex, candidates, recognized, detectMs, orbMs, totalMs, cacheInitCount) => {
+      console.log(
+        `[BerserkCV] frame=${frameIndex} candidates=${candidates} recognized=${recognized} ` +
+          `detect=${detectMs}ms orb=${orbMs}ms total=${totalMs}ms cacheInit=${cacheInitCount}`
+      );
+    },
+    []
+  );
 
   if (!hasPermission) {
     return (
@@ -175,8 +287,7 @@ export function CameraScreen() {
   }
 
   const isCameraActive = appState === 'active' && selectedCard === null;
-  const nativeError = resizerError == null ? null : String(resizerError);
-  const visibleError = nativeError ?? detectorError ?? cameraError;
+  const visibleError = detectorError ?? cameraError;
   const recognizedCount = detections.filter(
     (detection) => detection.recognition.status === 'recognized'
   ).length;
@@ -191,20 +302,12 @@ export function CameraScreen() {
       }}
       style={styles.container}
     >
-      <Camera
-        device="back"
+      <CameraFeed
         isActive={isCameraActive}
-        onError={(error) => {
-          // Android may report an interruption while the app is transitioning
-          // to background. That is expected once isActive is being turned off.
-          if (appState === 'active') {
-            setCameraError(error.message);
-          }
-        }}
-        orientationSource="interface"
-        outputs={[frameOutput]}
-        resizeMode="cover"
-        style={StyleSheet.absoluteFill}
+        onCameraError={showCameraError}
+        onCvError={showDetectorError}
+        onCvStats={logCvStats}
+        onDetections={showDetections}
       />
 
       {detections.map((detection, index) => {
@@ -230,13 +333,13 @@ export function CameraScreen() {
           OPENCV + ORB · {recognizedCount}/{detections.length}
         </Text>
         <Text style={styles.debugSubtext}>
-          REAL IDENTIFICATION · CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT}
+          CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · SINGLE SRC
         </Text>
       </View>
 
       {visibleError ? (
         <View pointerEvents="none" style={styles.errorBadge}>
-          <Text numberOfLines={3} style={styles.errorText}>
+          <Text numberOfLines={5} style={styles.errorText}>
             CV ERROR: {visibleError}
           </Text>
         </View>

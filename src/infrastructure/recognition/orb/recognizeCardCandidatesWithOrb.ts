@@ -24,11 +24,12 @@ const ORB_FAST_THRESHOLD = 10;
 
 const LOWE_RATIO = 0.75;
 
-const MIN_QUERY_DESCRIPTORS = 45;
-const MIN_GOOD_MATCHES = 28;
-const MIN_GOOD_MATCH_RATIO = 0.09;
-const MIN_WINNER_MARGIN = 10;
-const MIN_WINNER_RATIO = 1.28;
+const MIN_QUERY_DESCRIPTORS = 40;
+const MIN_GOOD_MATCHES_FLOOR = 18;
+const MAX_GOOD_MATCHES_REQUIREMENT = 28;
+const MIN_GOOD_MATCH_RATIO = 0.16;
+const MIN_WINNER_MARGIN = 8;
+const MIN_WINNER_RATIO = 1.8;
 
 export type OrbRecognitionDiagnostics = {
   readonly bestCardId: string | null;
@@ -64,11 +65,44 @@ type OrbRuntimeCache = {
 
 type WorkletGlobal = typeof globalThis & {
   __berserkOrbRuntimeCache?: OrbRuntimeCache;
+  __berserkOrbRuntimeCacheInitCount?: number;
 };
+
+function emptyDiagnostics(queryDescriptors = 0): OrbRecognitionDiagnostics {
+  'worklet';
+  return {
+    bestCardId: null,
+    queryDescriptors,
+    bestGoodMatches: 0,
+    secondBestGoodMatches: 0,
+    goodMatchRatio: 0,
+    winnerMargin: 0,
+    winnerRatio: 0,
+  };
+}
+
+function unknownResult(queryDescriptors = 0): {
+  recognition: RecognitionResult;
+  diagnostics: OrbRecognitionDiagnostics;
+} {
+  'worklet';
+  return {
+    recognition: { status: 'unknown', confidence: 0 },
+    diagnostics: emptyDiagnostics(queryDescriptors),
+  };
+}
 
 function clamp01(value: number): number {
   'worklet';
   return Math.max(0, Math.min(1, value));
+}
+
+function requiredGoodMatches(queryDescriptors: number): number {
+  'worklet';
+  return Math.max(
+    MIN_GOOD_MATCHES_FLOOR,
+    Math.min(MAX_GOOD_MATCHES_REQUIREMENT, Math.ceil(queryDescriptors * 0.12))
+  );
 }
 
 function createOrb(): ORB {
@@ -104,10 +138,6 @@ function createReferenceMats(): ReferenceMat[] {
 function getOrbRuntimeCache(): OrbRuntimeCache {
   'worklet';
 
-  // Frame Output calls run in one persistent worklet runtime. Rebuilding the
-  // ORB object, BFMatcher and 19 native reference Mats for every processed frame
-  // adds a large avoidable pause. Keep them alive for the lifetime of that
-  // runtime; they are reclaimed when the runtime itself is destroyed.
   const scope = globalThis as WorkletGlobal;
   const cached = scope.__berserkOrbRuntimeCache;
   if (cached != null) {
@@ -120,7 +150,13 @@ function getOrbRuntimeCache(): OrbRuntimeCache {
     references: createReferenceMats(),
   };
   scope.__berserkOrbRuntimeCache = created;
+  scope.__berserkOrbRuntimeCacheInitCount = (scope.__berserkOrbRuntimeCacheInitCount ?? 0) + 1;
   return created;
+}
+
+export function getOrbRuntimeCacheInitCount(): number {
+  'worklet';
+  return (globalThis as WorkletGlobal).__berserkOrbRuntimeCacheInitCount ?? 0;
 }
 
 function countGoodMatches(
@@ -129,6 +165,16 @@ function countGoodMatches(
   referenceDescriptors: Mat
 ): number {
   'worklet';
+
+  if (
+    queryDescriptors.rows <= 0 ||
+    queryDescriptors.cols <= 0 ||
+    referenceDescriptors.rows <= 0 ||
+    referenceDescriptors.cols <= 0 ||
+    queryDescriptors.cols !== referenceDescriptors.cols
+  ) {
+    return 0;
+  }
 
   const matches = OpenCV.knnMatchBF(matcher, queryDescriptors, referenceDescriptors, 2);
   try {
@@ -156,10 +202,10 @@ function scoreConfidence(
 ): number {
   'worklet';
 
-  const matchStrength = clamp01(bestGoodMatches / 100);
-  const queryCoverage = clamp01(bestGoodMatches / Math.max(queryDescriptors * 0.35, 1));
-  const separation = clamp01((bestGoodMatches - secondBestGoodMatches) / 45);
-  return clamp01(matchStrength * 0.45 + queryCoverage * 0.25 + separation * 0.3);
+  const matchStrength = clamp01(bestGoodMatches / 80);
+  const queryCoverage = clamp01(bestGoodMatches / Math.max(queryDescriptors * 0.3, 1));
+  const separation = clamp01((bestGoodMatches - secondBestGoodMatches) / 35);
+  return clamp01(matchStrength * 0.4 + queryCoverage * 0.3 + separation * 0.3);
 }
 
 function recognizeOne(
@@ -170,26 +216,23 @@ function recognizeOne(
 ): { recognition: RecognitionResult; diagnostics: OrbRecognitionDiagnostics } {
   'worklet';
 
+  if (image.rows <= 0 || image.cols <= 0) {
+    return unknownResult();
+  }
+
   const gray = Mat.create(0, 0, DataTypes.CV_8U);
   try {
     OpenCV.cvtColor(image, gray, ColorConversionCodes.COLOR_BGR2GRAY);
+    if (gray.rows <= 0 || gray.cols <= 0) {
+      return unknownResult();
+    }
+
     const { keypoints, descriptors } = OpenCV.detectAndCompute(orb, gray);
 
     try {
       const queryDescriptors = descriptors.rows;
-      if (queryDescriptors < MIN_QUERY_DESCRIPTORS) {
-        return {
-          recognition: { status: 'unknown', confidence: 0 },
-          diagnostics: {
-            bestCardId: null,
-            queryDescriptors,
-            bestGoodMatches: 0,
-            secondBestGoodMatches: 0,
-            goodMatchRatio: 0,
-            winnerMargin: 0,
-            winnerRatio: 0,
-          },
-        };
+      if (queryDescriptors < MIN_QUERY_DESCRIPTORS || descriptors.cols <= 0) {
+        return unknownResult(Math.max(queryDescriptors, 0));
       }
 
       const ranking: RankedReference[] = references.map((reference) => ({
@@ -200,17 +243,17 @@ function recognizeOne(
 
       const best = ranking[0];
       const second = ranking[1];
+      if (best == null || second == null) {
+        return unknownResult(queryDescriptors);
+      }
+
       const goodMatchRatio = best.goodMatches / Math.max(queryDescriptors, 1);
       const winnerMargin = best.goodMatches - second.goodMatches;
       const winnerRatio = best.goodMatches / Math.max(second.goodMatches, 1);
-      const confidence = scoreConfidence(
-        best.goodMatches,
-        second.goodMatches,
-        queryDescriptors
-      );
+      const confidence = scoreConfidence(best.goodMatches, second.goodMatches, queryDescriptors);
 
       const recognized =
-        best.goodMatches >= MIN_GOOD_MATCHES &&
+        best.goodMatches >= requiredGoodMatches(queryDescriptors) &&
         goodMatchRatio >= MIN_GOOD_MATCH_RATIO &&
         winnerMargin >= MIN_WINNER_MARGIN &&
         winnerRatio >= MIN_WINNER_RATIO;
@@ -238,10 +281,6 @@ function recognizeOne(
   }
 }
 
-/**
- * Recognizes every normalized candidate using an ORB/matcher/reference cache
- * that persists for the lifetime of the Frame Output worklet runtime.
- */
 export function recognizeCardCandidatesWithOrb(
   candidates: readonly OpenCvCardCandidate[]
 ): RecognizedCardCandidate[] {
@@ -254,16 +293,24 @@ export function recognizeCardCandidatesWithOrb(
   const { orb, matcher, references } = getOrbRuntimeCache();
 
   return candidates.map((candidate) => {
-    const { recognition, diagnostics } = recognizeOne(
-      candidate.normalizedImage,
-      orb,
-      matcher,
-      references
-    );
-    return {
-      detectorCorners: candidate.detectorCorners,
-      recognition,
-      diagnostics,
-    };
+    try {
+      const { recognition, diagnostics } = recognizeOne(
+        candidate.normalizedImage,
+        orb,
+        matcher,
+        references
+      );
+      return {
+        detectorCorners: candidate.detectorCorners,
+        recognition,
+        diagnostics,
+      };
+    } catch {
+      return {
+        detectorCorners: candidate.detectorCorners,
+        recognition: { status: 'unknown', confidence: 0 } as RecognitionResult,
+        diagnostics: emptyDiagnostics(),
+      };
+    }
   });
 }
