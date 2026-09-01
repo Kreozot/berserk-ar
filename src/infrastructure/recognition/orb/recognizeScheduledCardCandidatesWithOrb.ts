@@ -1,10 +1,10 @@
 import type { Quadrilateral, RecognitionResult } from '../../../core/vision/types';
 import type { OpenCvCardCandidate } from '../../detection/opencv/detectCardQuadrilaterals';
 import {
-  recognizeCardCandidatesWithOrb,
+  recognizeCardCandidatesWithOrbNow,
   type OrbRecognitionDiagnostics,
   type RecognizedCardCandidate,
-} from './recognizeCardCandidatesWithOrb';
+} from './recognizeCardCandidatesWithOrbNow';
 
 type Bounds = {
   readonly left: number;
@@ -56,7 +56,6 @@ const FORCE_RECHECK_SIZE_SIMILARITY = 0.72;
 
 function boundsOf(corners: Quadrilateral): Bounds {
   'worklet';
-
   let left = corners[0].x;
   let right = corners[0].x;
   let top = corners[0].y;
@@ -85,7 +84,6 @@ function boundsOf(corners: Quadrilateral): Bounds {
 
 function intersectionOverUnion(a: Bounds, b: Bounds): number {
   'worklet';
-
   const left = Math.max(a.left, b.left);
   const top = Math.max(a.top, b.top);
   const right = Math.min(a.right, b.right);
@@ -99,7 +97,6 @@ function intersectionOverUnion(a: Bounds, b: Bounds): number {
 
 function normalizedCenterDistance(a: Bounds, b: Bounds): number {
   'worklet';
-
   const dx = a.centerX - b.centerX;
   const dy = a.centerY - b.centerY;
   return Math.sqrt(dx * dx + dy * dy) / Math.max((a.diagonal + b.diagonal) / 2, 1);
@@ -107,7 +104,6 @@ function normalizedCenterDistance(a: Bounds, b: Bounds): number {
 
 function sizeSimilarity(a: Bounds, b: Bounds): number {
   'worklet';
-
   const widthRatio = Math.min(a.width, b.width) / Math.max(a.width, b.width);
   const heightRatio = Math.min(a.height, b.height) / Math.max(a.height, b.height);
   return (widthRatio + heightRatio) / 2;
@@ -115,13 +111,9 @@ function sizeSimilarity(a: Bounds, b: Bounds): number {
 
 function matchScore(trackBounds: Bounds, candidateBounds: Bounds): number | null {
   'worklet';
-
   const iou = intersectionOverUnion(trackBounds, candidateBounds);
   const centerDistance = normalizedCenterDistance(trackBounds, candidateBounds);
-  if (iou < MIN_IOU && centerDistance > MAX_NORMALIZED_CENTER_DISTANCE) {
-    return null;
-  }
-
+  if (iou < MIN_IOU && centerDistance > MAX_NORMALIZED_CENTER_DISTANCE) return null;
   const centerScore = Math.max(0, 1 - centerDistance / MAX_NORMALIZED_CENTER_DISTANCE);
   const shapeScore = sizeSimilarity(trackBounds, candidateBounds);
   return iou * 0.5 + centerScore * 0.35 + shapeScore * 0.15;
@@ -129,18 +121,10 @@ function matchScore(trackBounds: Bounds, candidateBounds: Bounds): number | null
 
 function getState(): SchedulerState {
   'worklet';
-
   const scope = globalThis as WorkletGlobal;
   const cached = scope.__berserkOrbSchedulerState;
-  if (cached != null) {
-    return cached;
-  }
-
-  const created: SchedulerState = {
-    frameIndex: 0,
-    nextTrackId: 1,
-    tracks: [],
-  };
+  if (cached != null) return cached;
+  const created: SchedulerState = { frameIndex: 0, nextTrackId: 1, tracks: [] };
   scope.__berserkOrbSchedulerState = created;
   return created;
 }
@@ -150,10 +134,6 @@ function skippedResult(
   cached: RecognizedCardCandidate
 ): RecognizedCardCandidate {
   'worklet';
-
-  // A skipped ORB pass is intentionally reported as UNKNOWN to the UI tracker.
-  // The UI tracker then retains its confirmed identity without treating stale
-  // recognition data as a fresh vote for a cardId.
   return {
     detectorCorners: candidate.detectorCorners,
     recognition: { status: 'unknown', confidence: 0 } as RecognitionResult,
@@ -165,14 +145,11 @@ export function recognizeScheduledCardCandidatesWithOrb(
   candidates: readonly OpenCvCardCandidate[]
 ): ScheduledRecognitionBatch {
   'worklet';
-
   const state = getState();
   state.frameIndex += 1;
 
   if (candidates.length === 0) {
-    for (const track of state.tracks) {
-      track.missedFrames += 1;
-    }
+    for (const track of state.tracks) track.missedFrames += 1;
     state.tracks = state.tracks.filter((track) => track.missedFrames <= MAX_MISSED_FRAMES);
     return { results: [], orbCandidates: 0 };
   }
@@ -182,9 +159,7 @@ export function recognizeScheduledCardCandidatesWithOrb(
   for (let trackIndex = 0; trackIndex < state.tracks.length; trackIndex += 1) {
     for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
       const score = matchScore(state.tracks[trackIndex].bounds, candidateBounds[candidateIndex]);
-      if (score !== null) {
-        pairs.push({ trackIndex, candidateIndex, score });
-      }
+      if (score !== null) pairs.push({ trackIndex, candidateIndex, score });
     }
   }
   pairs.sort((a, b) => b.score - a.score);
@@ -193,18 +168,14 @@ export function recognizeScheduledCardCandidatesWithOrb(
   const matchedCandidates = new Set<number>();
   const candidateToTrack = new Map<number, SchedulerTrack>();
   for (const pair of pairs) {
-    if (matchedTracks.has(pair.trackIndex) || matchedCandidates.has(pair.candidateIndex)) {
-      continue;
-    }
+    if (matchedTracks.has(pair.trackIndex) || matchedCandidates.has(pair.candidateIndex)) continue;
     matchedTracks.add(pair.trackIndex);
     matchedCandidates.add(pair.candidateIndex);
     candidateToTrack.set(pair.candidateIndex, state.tracks[pair.trackIndex]);
   }
 
   for (let trackIndex = 0; trackIndex < state.tracks.length; trackIndex += 1) {
-    if (!matchedTracks.has(trackIndex)) {
-      state.tracks[trackIndex].missedFrames += 1;
-    }
+    if (!matchedTracks.has(trackIndex)) state.tracks[trackIndex].missedFrames += 1;
   }
 
   const selectedCandidates: OpenCvCardCandidate[] = [];
@@ -237,14 +208,13 @@ export function recognizeScheduledCardCandidatesWithOrb(
     track.bounds = currentBounds;
     track.missedFrames = 0;
     tracksForCandidate[candidateIndex] = track;
-
     if (shouldRunOrb) {
       selectedIndexes.push(candidateIndex);
       selectedCandidates.push(candidates[candidateIndex]);
     }
   }
 
-  const actualResults = recognizeCardCandidatesWithOrb(selectedCandidates);
+  const actualResults = recognizeCardCandidatesWithOrbNow(selectedCandidates);
   const actualByCandidate = new Map<number, RecognizedCardCandidate>();
   for (let selectedIndex = 0; selectedIndex < selectedIndexes.length; selectedIndex += 1) {
     actualByCandidate.set(selectedIndexes[selectedIndex], actualResults[selectedIndex]);
@@ -258,13 +228,9 @@ export function recognizeScheduledCardCandidatesWithOrb(
       track.cached = actual;
       track.lastOrbFrame = state.frameIndex;
       results.push(actual);
-      continue;
-    }
-
-    if (track.cached != null) {
+    } else if (track.cached != null) {
       results.push(skippedResult(candidates[candidateIndex], track.cached));
     } else {
-      // Defensive fallback; normal scheduling always ORBs uncached tracks.
       results.push({
         detectorCorners: candidates[candidateIndex].detectorCorners,
         recognition: { status: 'unknown', confidence: 0 },
