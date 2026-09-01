@@ -242,6 +242,7 @@ export function CameraScreen() {
         cameraDetections.map((detection) => ({
           corners: detection.detectorCorners,
           recognition: detection.recognition,
+          evaluated: detection.evaluated,
         }))
       );
 
