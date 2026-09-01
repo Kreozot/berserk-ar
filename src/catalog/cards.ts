@@ -1,5 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
+import { findById } from './catalogLookup';
+
 export type CardDefinition = {
   id: string;
   nameRu: string;
@@ -25,8 +27,8 @@ export const cards: CardDefinition[] = [
   { id: 'll-016', nameRu: 'Карга', image: require('../../assets/cards/legends-of-laar/ll-016.jpg') },
   { id: 'll-017', nameRu: 'Раб клинка', image: require('../../assets/cards/legends-of-laar/ll-017.jpg') },
   { id: 'll-018', nameRu: 'Тролль-воин', image: require('../../assets/cards/legends-of-laar/ll-018.jpg') },
-  { id: 'll-019', nameRu: 'Летописец', image: require('../../assets/cards/legends-of-laar/ll-019.jpg') }
+  { id: 'll-019', nameRu: 'Летописец', image: require('../../assets/cards/legends-of-laar/ll-019.jpg') },
 ];
 
-export const getCardById = (cardId: string): CardDefinition | undefined =>
-  cards.find((card) => card.id === cardId);
+/** Returns the bundled card definition for a stable card id, if it exists. */
+export const getCardById = (cardId: string): CardDefinition | undefined => findById(cards, cardId);

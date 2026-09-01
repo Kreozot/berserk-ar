@@ -8,6 +8,7 @@ export {
   type RecognizedCardCandidate,
 } from './recognizeCardCandidatesWithOrbNow';
 
+/** Applies worklet-side scheduling and returns recognition results in candidate order. */
 export function recognizeCardCandidatesWithOrb(
   candidates: readonly OpenCvCardCandidate[]
 ): RecognizedCardCandidate[] {

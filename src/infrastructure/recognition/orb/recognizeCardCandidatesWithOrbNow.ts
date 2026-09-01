@@ -11,6 +11,11 @@ import {
 
 import type { Quadrilateral, RecognitionResult } from '../../../core/vision/types';
 import type { OpenCvCardCandidate } from '../../detection/opencv/detectCardQuadrilaterals';
+import {
+  MIN_QUERY_DESCRIPTORS,
+  passesOrbRecognitionThresholds,
+  scoreOrbConfidence,
+} from './orbScoring';
 import { ORB_REFERENCE_DESCRIPTORS } from './referenceDescriptors.generated';
 
 const ORB_NFEATURES = 600;
@@ -22,12 +27,6 @@ const ORB_WTA_K = 2;
 const ORB_PATCH_SIZE = 31;
 const ORB_FAST_THRESHOLD = 10;
 const LOWE_RATIO = 0.75;
-const MIN_QUERY_DESCRIPTORS = 40;
-const MIN_GOOD_MATCHES_FLOOR = 18;
-const MAX_GOOD_MATCHES_REQUIREMENT = 28;
-const MIN_GOOD_MATCH_RATIO = 0.16;
-const MIN_WINNER_MARGIN = 8;
-const MIN_WINNER_RATIO = 1.8;
 
 export type OrbRecognitionDiagnostics = {
   readonly bestCardId: string | null;
@@ -58,6 +57,7 @@ type WorkletGlobal = typeof globalThis & {
   __berserkOrbRuntimeCacheInitCount?: number;
 };
 
+/** Creates zero-valued diagnostics for candidates that cannot be evaluated. */
 function emptyDiagnostics(queryDescriptors = 0): OrbRecognitionDiagnostics {
   'worklet';
   return {
@@ -71,6 +71,7 @@ function emptyDiagnostics(queryDescriptors = 0): OrbRecognitionDiagnostics {
   };
 }
 
+/** Creates a consistent UNKNOWN result while preserving the query descriptor count. */
 function unknownResult(queryDescriptors = 0): {
   recognition: RecognitionResult;
   diagnostics: OrbRecognitionDiagnostics;
@@ -82,19 +83,7 @@ function unknownResult(queryDescriptors = 0): {
   };
 }
 
-function clamp01(value: number): number {
-  'worklet';
-  return Math.max(0, Math.min(1, value));
-}
-
-function requiredGoodMatches(queryDescriptors: number): number {
-  'worklet';
-  return Math.max(
-    MIN_GOOD_MATCHES_FLOOR,
-    Math.min(MAX_GOOD_MATCHES_REQUIREMENT, Math.ceil(queryDescriptors * 0.12))
-  );
-}
-
+/** Creates the configured ORB feature detector used for both references and camera crops. */
 function createOrb(): ORB {
   'worklet';
   return OpenCV.ORB_create(
@@ -110,6 +99,7 @@ function createOrb(): ORB {
   );
 }
 
+/** Materializes generated reference descriptor buffers as native OpenCV Mats. */
 function createReferenceMats(): ReferenceMat[] {
   'worklet';
   return ORB_REFERENCE_DESCRIPTORS.map((reference) => ({
@@ -124,6 +114,7 @@ function createReferenceMats(): ReferenceMat[] {
   }));
 }
 
+/** Returns the single ORB/matcher/reference cache owned by the current worklet runtime. */
 function getOrbRuntimeCache(): OrbRuntimeCache {
   'worklet';
   const scope = globalThis as WorkletGlobal;
@@ -139,11 +130,13 @@ function getOrbRuntimeCache(): OrbRuntimeCache {
   return created;
 }
 
+/** Returns how many times the ORB runtime cache has been initialized for diagnostics. */
 export function getOrbRuntimeCacheInitCount(): number {
   'worklet';
   return (globalThis as WorkletGlobal).__berserkOrbRuntimeCacheInitCount ?? 0;
 }
 
+/** Counts Lowe-ratio-filtered Hamming matches between one query and one reference card. */
 function countGoodMatches(
   matcher: BFMatcher,
   queryDescriptors: Mat,
@@ -171,14 +164,7 @@ function countGoodMatches(
   }
 }
 
-function scoreConfidence(bestGoodMatches: number, secondBestGoodMatches: number, queryDescriptors: number): number {
-  'worklet';
-  const matchStrength = clamp01(bestGoodMatches / 80);
-  const queryCoverage = clamp01(bestGoodMatches / Math.max(queryDescriptors * 0.3, 1));
-  const separation = clamp01((bestGoodMatches - secondBestGoodMatches) / 35);
-  return clamp01(matchStrength * 0.4 + queryCoverage * 0.3 + separation * 0.3);
-}
-
+/** Runs full ORB recognition for one normalized card crop and returns diagnostics. */
 function recognizeOne(
   image: Mat,
   orb: ORB,
@@ -210,12 +196,12 @@ function recognizeOne(
       const goodMatchRatio = best.goodMatches / Math.max(queryDescriptors, 1);
       const winnerMargin = best.goodMatches - second.goodMatches;
       const winnerRatio = best.goodMatches / Math.max(second.goodMatches, 1);
-      const confidence = scoreConfidence(best.goodMatches, second.goodMatches, queryDescriptors);
-      const recognized =
-        best.goodMatches >= requiredGoodMatches(queryDescriptors) &&
-        goodMatchRatio >= MIN_GOOD_MATCH_RATIO &&
-        winnerMargin >= MIN_WINNER_MARGIN &&
-        winnerRatio >= MIN_WINNER_RATIO;
+      const confidence = scoreOrbConfidence(best.goodMatches, second.goodMatches, queryDescriptors);
+      const recognized = passesOrbRecognitionThresholds(
+        best.goodMatches,
+        second.goodMatches,
+        queryDescriptors
+      );
 
       return {
         recognition: recognized
@@ -240,6 +226,7 @@ function recognizeOne(
   }
 }
 
+/** Immediately evaluates every supplied candidate with ORB, without scheduling/skipping. */
 export function recognizeCardCandidatesWithOrbNow(
   candidates: readonly OpenCvCardCandidate[]
 ): RecognizedCardCandidate[] {

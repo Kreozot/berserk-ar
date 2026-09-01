@@ -9,7 +9,8 @@
     "android:device": "expo run:android --device",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npx --yes vitest@4.1.11 run"
   },
   "dependencies": {
     "expo": "~57.0.9",

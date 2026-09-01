@@ -7,6 +7,7 @@ type Props = {
   onClose: () => void;
 };
 
+/** Shows the selected card artwork and name in a dismissible full-screen modal. */
 export function CardModal({ card, onClose }: Props) {
   return (
     <Modal
@@ -45,16 +46,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#090909',
     padding: 20,
   },
-  image: {
-    width: '100%',
-    height: '82%',
-  },
-  title: {
-    marginTop: 12,
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '600',
-  },
+  image: { width: '100%', height: '82%' },
+  title: { marginTop: 12, color: '#ffffff', fontSize: 20, fontWeight: '600' },
   close: {
     position: 'absolute',
     right: 18,
@@ -66,10 +59,5 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: 'rgba(0,0,0,0.7)',
   },
-  closeText: {
-    color: '#ffffff',
-    fontSize: 36,
-    lineHeight: 40,
-    fontWeight: '300',
-  },
+  closeText: { color: '#ffffff', fontSize: 36, lineHeight: 40, fontWeight: '300' },
 });

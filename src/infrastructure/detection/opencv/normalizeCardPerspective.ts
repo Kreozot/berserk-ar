@@ -11,41 +11,20 @@ import {
   Size,
 } from 'react-native-fast-opencv';
 
-import type { Point, Quadrilateral } from '../../../core/vision/types';
+import type { Quadrilateral } from '../../../core/vision/types';
+import { orientShortEdgeAsWidth } from './perspectiveGeometry';
 
 /**
  * Berserk cards use the standard 63:89 card aspect ratio. Keeping a stable
- * normalized size gives the recognizer comparable geometry regardless of the
- * card's perspective or whether the physical card lies portrait/landscape.
+ * normalized size gives the recognizer comparable geometry regardless of perspective.
  */
 export const NORMALIZED_CARD_WIDTH = 252;
 export const NORMALIZED_CARD_HEIGHT = 356;
 
-function distance(a: Point, b: Point): number {
-  'worklet';
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function orientShortEdgeAsWidth(corners: Quadrilateral): Quadrilateral {
-  'worklet';
-
-  const horizontalPair =
-    (distance(corners[0], corners[1]) + distance(corners[2], corners[3])) / 2;
-  const verticalPair =
-    (distance(corners[1], corners[2]) + distance(corners[3], corners[0])) / 2;
-
-  if (horizontalPair <= verticalPair) {
-    return corners;
-  }
-
-  // Rotate the corner assignment by 90° so the observed short edge maps to
-  // normalized width and the long edge maps to normalized height. This avoids
-  // anisotropically stretching a card that lies horizontally on the table.
-  return [corners[1], corners[2], corners[3], corners[0]];
-}
-
+/**
+ * Perspective-warps one detected card into the canonical portrait-sized image used by ORB.
+ * All temporary native OpenCV objects are explicitly released before returning.
+ */
 export function normalizeCardPerspective(source: Mat, corners: Quadrilateral): Mat {
   'worklet';
 
@@ -72,19 +51,14 @@ export function normalizeCardPerspective(source: Mat, corners: Quadrilateral): M
   let transform: Mat | null = null;
 
   try {
-    for (const point of sourcePointObjects) {
-      sourcePoints.push(point);
-    }
-    for (const point of destinationPointObjects) {
-      destinationPoints.push(point);
-    }
+    for (const point of sourcePointObjects) sourcePoints.push(point);
+    for (const point of destinationPointObjects) destinationPoints.push(point);
 
     transform = OpenCV.getPerspectiveTransform(
       sourcePoints,
       destinationPoints,
       DecompTypes.DECOMP_LU
     );
-
     OpenCV.warpPerspective(
       source,
       normalized,
@@ -94,7 +68,6 @@ export function normalizeCardPerspective(source: Mat, corners: Quadrilateral): M
       BorderTypes.BORDER_REPLICATE,
       borderValue
     );
-
     return normalized;
   } catch (error) {
     normalized.release();
@@ -105,11 +78,7 @@ export function normalizeCardPerspective(source: Mat, corners: Quadrilateral): M
     outputSize.release();
     sourcePoints.release();
     destinationPoints.release();
-    for (const point of sourcePointObjects) {
-      point.release();
-    }
-    for (const point of destinationPointObjects) {
-      point.release();
-    }
+    for (const point of sourcePointObjects) point.release();
+    for (const point of destinationPointObjects) point.release();
   }
 }

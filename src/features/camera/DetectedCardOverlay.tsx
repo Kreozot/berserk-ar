@@ -1,8 +1,9 @@
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getCardById, type CardDefinition } from '../../catalog/cards';
-import type { Point, Quadrilateral } from '../../core/vision/types';
+import type { Quadrilateral } from '../../core/vision/types';
 import type { OrbRecognitionDiagnostics } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
+import { getOverlayLineGeometry } from './overlayGeometry';
 
 type Props = {
   card: CardDefinition | null;
@@ -17,24 +18,10 @@ type Props = {
 const RECOGNIZED_COLOR = '#35d06f';
 const UNKNOWN_COLOR = '#f0b429';
 
-function getLineStyle(start: Point, end: Point): ViewStyle {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx);
-  const centerX = (start.x + end.x) / 2;
-  const centerY = (start.y + end.y) / 2;
-
-  return {
-    position: 'absolute',
-    left: centerX - length / 2,
-    top: centerY - 1.5,
-    width: length,
-    height: 3,
-    transform: [{ rotate: `${angle}rad` }],
-  };
-}
-
+/**
+ * Draws an interactive quadrilateral around one detected card plus recognition diagnostics.
+ * Recognized cards are tappable and open their high-resolution card image.
+ */
 export function DetectedCardOverlay({
   card,
   confidence,
@@ -73,11 +60,23 @@ export function DetectedCardOverlay({
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {corners.map((corner, index) => {
         const next = corners[(index + 1) % corners.length];
+        const line = getOverlayLineGeometry(corner, next);
         return (
           <View
             key={index}
             pointerEvents="none"
-            style={[styles.edge, getLineStyle(corner, next), { backgroundColor: accentColor }]}
+            style={[
+              styles.edge,
+              {
+                position: 'absolute',
+                left: line.left,
+                top: line.top,
+                width: line.width,
+                height: line.height,
+                transform: [{ rotate: `${line.angleRad}rad` }],
+                backgroundColor: accentColor,
+              },
+            ]}
           />
         );
       })}
@@ -87,9 +86,7 @@ export function DetectedCardOverlay({
         accessibilityLabel={card ? `Open ${card.nameRu}` : 'Unrecognized rectangle'}
         disabled={card === null}
         onPress={() => {
-          if (card) {
-            onPress(card);
-          }
+          if (card) onPress(card);
         }}
         style={[
           styles.hitArea,
@@ -114,12 +111,8 @@ export function DetectedCardOverlay({
 }
 
 const styles = StyleSheet.create({
-  edge: {
-    borderRadius: 2,
-  },
-  hitArea: {
-    position: 'absolute',
-  },
+  edge: { borderRadius: 2 },
+  hitArea: { position: 'absolute' },
   label: {
     position: 'absolute',
     left: 0,
@@ -132,14 +125,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(0,0,0,0.78)',
   },
-  labelTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  labelMetrics: {
-    marginTop: 2,
-    color: '#cccccc',
-    fontSize: 9,
-    fontWeight: '500',
-  },
+  labelTitle: { fontSize: 12, fontWeight: '700' },
+  labelMetrics: { marginTop: 2, color: '#cccccc', fontSize: 9, fontWeight: '500' },
 });

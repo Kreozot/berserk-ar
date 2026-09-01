@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 
 import { CameraScreen } from './features/camera/CameraScreen';
 
+/** Renders the application shell and the full-screen card-recognition camera experience. */
 export function App() {
   return (
     <View style={styles.container}>
