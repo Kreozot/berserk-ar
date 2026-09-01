@@ -16,6 +16,7 @@ export const SCENE_CHURN_MATCH_RATIO = 0.45;
 
 /** Scores whether a current candidate plausibly continues a scheduler track. */
 export function scoreSchedulerMatch(trackBounds: Bounds, candidateBounds: Bounds): number | null {
+  'worklet';
   const iou = intersectionOverUnion(trackBounds, candidateBounds);
   const centerDistance = normalizedCenterDistance(trackBounds, candidateBounds);
   if (iou < SCHEDULER_MIN_IOU && centerDistance > SCHEDULER_MAX_NORMALIZED_CENTER_DISTANCE) {
@@ -28,6 +29,7 @@ export function scoreSchedulerMatch(trackBounds: Bounds, candidateBounds: Bounds
 
 /** Detects a global scene shift from the median motion of accepted track matches. */
 export function isSceneShifted(medianSceneMotion: number, acceptedPairCount: number): boolean {
+  'worklet';
   return acceptedPairCount >= SCENE_SHIFT_MIN_MATCHES && medianSceneMotion >= SCENE_SHIFT_MEDIAN_DISTANCE;
 }
 
@@ -37,6 +39,7 @@ export function isSceneChurned(
   candidateCount: number,
   acceptedPairCount: number
 ): boolean {
+  'worklet';
   const comparableCount = Math.max(1, Math.min(previousTrackCount, candidateCount));
   const matchRatio = acceptedPairCount / comparableCount;
   return (
@@ -55,6 +58,7 @@ export function shouldRunOrbForTrack(args: {
   centerDistance: number;
   currentSizeSimilarity: number;
 }): boolean {
+  'worklet';
   return (
     args.forceOrbAll ||
     !args.cachedRecognized ||
