@@ -15,8 +15,24 @@ type Props = {
   trackId: string;
 };
 
+type OverlayEdge = {
+  key: 'top' | 'right' | 'bottom' | 'left';
+  start: Quadrilateral[number];
+  end: Quadrilateral[number];
+};
+
 const RECOGNIZED_COLOR = '#35d06f';
 const UNKNOWN_COLOR = '#f0b429';
+
+/** Builds the four named edges of a quadrilateral so React receives stable semantic keys. */
+function getOverlayEdges(corners: Quadrilateral): OverlayEdge[] {
+  return [
+    { key: 'top', start: corners[0], end: corners[1] },
+    { key: 'right', start: corners[1], end: corners[2] },
+    { key: 'bottom', start: corners[2], end: corners[3] },
+    { key: 'left', start: corners[3], end: corners[0] },
+  ];
+}
 
 /**
  * Draws an interactive quadrilateral around one detected card plus recognition diagnostics.
@@ -58,12 +74,11 @@ export function DetectedCardOverlay({
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      {corners.map((corner, index) => {
-        const next = corners[(index + 1) % corners.length];
-        const line = getOverlayLineGeometry(corner, next);
+      {getOverlayEdges(corners).map((edge) => {
+        const line = getOverlayLineGeometry(edge.start, edge.end);
         return (
           <View
-            key={index}
+            key={edge.key}
             pointerEvents="none"
             style={[
               styles.edge,
