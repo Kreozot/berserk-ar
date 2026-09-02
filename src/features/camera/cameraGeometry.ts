@@ -10,7 +10,7 @@ export function mapDetectorPointToPreview(
   point: Point,
   preview: PreviewSize,
   detectorWidth: number,
-  detectorHeight: number
+  detectorHeight: number,
 ): Point {
   'worklet';
   const rotatedPoint = {

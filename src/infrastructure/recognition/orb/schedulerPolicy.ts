@@ -30,14 +30,16 @@ export function scoreSchedulerMatch(trackBounds: Bounds, candidateBounds: Bounds
 /** Detects a global scene shift from the median motion of accepted track matches. */
 export function isSceneShifted(medianSceneMotion: number, acceptedPairCount: number): boolean {
   'worklet';
-  return acceptedPairCount >= SCENE_SHIFT_MIN_MATCHES && medianSceneMotion >= SCENE_SHIFT_MEDIAN_DISTANCE;
+  return (
+    acceptedPairCount >= SCENE_SHIFT_MIN_MATCHES && medianSceneMotion >= SCENE_SHIFT_MEDIAN_DISTANCE
+  );
 }
 
 /** Detects scene churn when too few old tracks survive in a multi-card view. */
 export function isSceneChurned(
   previousTrackCount: number,
   candidateCount: number,
-  acceptedPairCount: number
+  acceptedPairCount: number,
 ): boolean {
   'worklet';
   const comparableCount = Math.max(1, Math.min(previousTrackCount, candidateCount));

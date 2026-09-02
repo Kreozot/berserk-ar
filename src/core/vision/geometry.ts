@@ -29,7 +29,7 @@ export function orderClockwise(points: readonly Point[]): Quadrilateral {
   const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
   const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
   const ordered = [...points].sort(
-    (a, b) => Math.atan2(a.y - centerY, a.x - centerX) - Math.atan2(b.y - centerY, b.x - centerX)
+    (a, b) => Math.atan2(a.y - centerY, a.x - centerX) - Math.atan2(b.y - centerY, b.x - centerX),
   );
   let firstIndex = 0;
   let smallestSum = Number.POSITIVE_INFINITY;
@@ -188,7 +188,5 @@ export function median(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle];
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 }

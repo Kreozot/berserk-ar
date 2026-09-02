@@ -1,5 +1,5 @@
-import type { Quadrilateral } from '../../../core/vision/types';
 import { pointDistance } from '../../../core/vision/geometry';
+import type { Quadrilateral } from '../../../core/vision/types';
 
 /** Rotates corner assignment so the observed short edge maps to normalized image width. */
 export function orientShortEdgeAsWidth(corners: Quadrilateral): Quadrilateral {

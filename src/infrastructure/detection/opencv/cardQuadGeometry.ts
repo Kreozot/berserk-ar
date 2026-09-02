@@ -1,4 +1,3 @@
-import type { Point, Quadrilateral } from '../../../core/vision/types';
 import {
   edgeLengths,
   isConvexQuadrilateral,
@@ -7,6 +6,7 @@ import {
   polygonArea,
   quadrilateralAspect,
 } from '../../../core/vision/geometry';
+import type { Point, Quadrilateral } from '../../../core/vision/types';
 
 export type CardQuadSummary = {
   readonly cardAspect: number;
@@ -50,7 +50,7 @@ export function scoreCardShape(
   expectedCardAspect: number,
   contourQuadFill: number,
   edgeSimilarity: number,
-  angleCosine: number
+  angleCosine: number,
 ): number {
   'worklet';
   const aspectScore = 1 - Math.min(1, Math.abs(cardAspect - expectedCardAspect) / 0.22);
@@ -61,7 +61,7 @@ export function scoreCardShape(
 /** Returns whether a candidate center is close enough to an accepted quad to be treated as a duplicate. */
 export function overlapsAcceptedQuad(
   candidate: QuadCenterSize,
-  accepted: readonly QuadCenterSize[]
+  accepted: readonly QuadCenterSize[],
 ): boolean {
   'worklet';
   return accepted.some((other) => {

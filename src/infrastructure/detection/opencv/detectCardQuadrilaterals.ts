@@ -95,7 +95,7 @@ function collectQuadrilaterals(
   contours: PointVectorOfVectors,
   imageArea: number,
   source: CandidateSource,
-  scored: ScoredQuadrilateral[]
+  scored: ScoredQuadrilateral[],
 ): void {
   'worklet';
 
@@ -128,11 +128,13 @@ function collectQuadrilaterals(
           cardAspect > MAX_CARD_ASPECT ||
           edgeSimilarity < MIN_OPPOSITE_EDGE_RATIO ||
           angleCosine > MAX_ADJACENT_EDGE_COSINE
-        ) continue;
+        )
+          continue;
 
         const rect = OpenCV.boundingRect(approx);
         try {
-          if (rect.width >= DETECTOR_WIDTH * 0.98 || rect.height >= DETECTOR_HEIGHT * 0.98) continue;
+          if (rect.width >= DETECTOR_WIDTH * 0.98 || rect.height >= DETECTOR_HEIGHT * 0.98)
+            continue;
           scored.push({
             corners,
             area,
@@ -147,7 +149,7 @@ function collectQuadrilaterals(
               EXPECTED_CARD_ASPECT,
               contourQuadFill,
               edgeSimilarity,
-              angleCosine
+              angleCosine,
             ),
           });
         } finally {
@@ -168,7 +170,7 @@ function collectQuadrilaterals(
  */
 export function detectNormalizedCardCandidates(
   frame: Frame,
-  resizer: Resizer
+  resizer: Resizer,
 ): OpenCvCardCandidate[] {
   'worklet';
 
@@ -190,10 +192,20 @@ export function detectNormalizedCardCandidates(
       OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
       OpenCV.GaussianBlur(gray, blurred, blurKernel, 0);
       OpenCV.Canny(blurred, edges, 40, 120);
-      OpenCV.findContours(edges, rawContours, RetrievalModes.RETR_LIST, ContourApproximationModes.CHAIN_APPROX_SIMPLE);
+      OpenCV.findContours(
+        edges,
+        rawContours,
+        RetrievalModes.RETR_LIST,
+        ContourApproximationModes.CHAIN_APPROX_SIMPLE,
+      );
 
       OpenCV.morphologyEx(edges, closedEdges, MorphTypes.MORPH_CLOSE, closeKernel);
-      OpenCV.findContours(closedEdges, closedContours, RetrievalModes.RETR_LIST, ContourApproximationModes.CHAIN_APPROX_SIMPLE);
+      OpenCV.findContours(
+        closedEdges,
+        closedContours,
+        RetrievalModes.RETR_LIST,
+        ContourApproximationModes.CHAIN_APPROX_SIMPLE,
+      );
 
       const imageArea = DETECTOR_WIDTH * DETECTOR_HEIGHT;
       const scored: ScoredQuadrilateral[] = [];

@@ -18,7 +18,7 @@ function recognized(
   cardId: string,
   confidence = 0.8,
   evaluated = true,
-  corners = quad(0, 0)
+  corners = quad(0, 0),
 ): TrackObservation {
   return {
     corners,
@@ -28,11 +28,7 @@ function recognized(
 }
 
 /** Builds an unknown tracker observation with concise defaults. */
-function unknown(
-  confidence = 0,
-  evaluated = true,
-  corners = quad(0, 0)
-): TrackObservation {
+function unknown(confidence = 0, evaluated = true, corners = quad(0, 0)): TrackObservation {
   return {
     corners,
     recognition: { status: 'unknown', confidence },
