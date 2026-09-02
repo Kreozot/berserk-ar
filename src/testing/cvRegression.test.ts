@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Quadrilateral } from '../core/vision/types';
-import { evaluateCvRegression, type CvRegressionExpectation, type CvRegressionObservation } from './cvRegression';
+import {
+  type CvRegressionExpectation,
+  type CvRegressionObservation,
+  evaluateCvRegression,
+} from './cvRegression';
 
 /** Builds a normalized axis-aligned quadrilateral for regression fixtures. */
 function quad(left: number, top: number, width: number, height: number): Quadrilateral {
@@ -14,7 +18,11 @@ function quad(left: number, top: number, width: number, height: number): Quadril
 }
 
 /** Builds one expected card entry with concise defaults. */
-function expected(label: string, cardId: string | null, corners: Quadrilateral): CvRegressionExpectation {
+function expected(
+  label: string,
+  cardId: string | null,
+  corners: Quadrilateral,
+): CvRegressionExpectation {
   return { label, cardId, corners };
 }
 
@@ -26,8 +34,14 @@ function observed(cardId: string | null, corners: Quadrilateral): CvRegressionOb
 describe('evaluateCvRegression', () => {
   it('passes when every expected card has one close observation with the correct identity', () => {
     const result = evaluateCvRegression(
-      [expected('left', 'll-001', quad(0.1, 0.1, 0.2, 0.3)), expected('right', 'll-002', quad(0.6, 0.1, 0.2, 0.3))],
-      [observed('ll-002', quad(0.61, 0.11, 0.2, 0.3)), observed('ll-001', quad(0.11, 0.1, 0.2, 0.3))],
+      [
+        expected('left', 'll-001', quad(0.1, 0.1, 0.2, 0.3)),
+        expected('right', 'll-002', quad(0.6, 0.1, 0.2, 0.3)),
+      ],
+      [
+        observed('ll-002', quad(0.61, 0.11, 0.2, 0.3)),
+        observed('ll-001', quad(0.11, 0.1, 0.2, 0.3)),
+      ],
     );
 
     expect(result.passed).toBe(true);
@@ -81,15 +95,20 @@ describe('evaluateCvRegression', () => {
 
   it('uses the highest-IoU one-to-one pairing when candidates overlap', () => {
     const result = evaluateCvRegression(
-      [expected('a', 'll-001', quad(0.1, 0.1, 0.2, 0.3)), expected('b', 'll-002', quad(0.35, 0.1, 0.2, 0.3))],
+      [
+        expected('a', 'll-001', quad(0.1, 0.1, 0.2, 0.3)),
+        expected('b', 'll-002', quad(0.35, 0.1, 0.2, 0.3)),
+      ],
       [observed('ll-002', quad(0.34, 0.1, 0.2, 0.3)), observed('ll-001', quad(0.1, 0.1, 0.2, 0.3))],
       { minIou: 0.1 },
     );
 
     expect(result.passed).toBe(true);
-    expect(result.matches.map((match) => [match.expectationIndex, match.observationIndex])).toEqual([
-      [0, 1],
-      [1, 0],
-    ]);
+    expect(result.matches.map((match) => [match.expectationIndex, match.observationIndex])).toEqual(
+      [
+        [0, 1],
+        [1, 0],
+      ],
+    );
   });
 });

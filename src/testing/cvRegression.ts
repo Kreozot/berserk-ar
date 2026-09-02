@@ -1,4 +1,4 @@
-import { boundsOf, intersectionOverUnion } from '../core/vision/geometry';
+import { type Bounds, intersectionOverUnion } from '../core/vision/geometry';
 import type { Quadrilateral } from '../core/vision/types';
 
 export type CvRegressionExpectation = {
@@ -44,6 +44,30 @@ const DEFAULT_OPTIONS: CvRegressionOptions = {
   requireIdentity: true,
 };
 
+/** Preserves sub-unit dimensions when fixtures use normalized 0..1 coordinates. */
+function normalizedBoundsOf(corners: Quadrilateral): Bounds {
+  const xs = corners.map((point) => point.x);
+  const ys = corners.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const right = Math.max(...xs);
+  const bottom = Math.max(...ys);
+  const width = Math.max(0, right - left);
+  const height = Math.max(0, bottom - top);
+
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width,
+    height,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2,
+    diagonal: Math.sqrt(width * width + height * height),
+  };
+}
+
 /**
  * Greedily pairs expected and observed cards by highest IoU, then reports geometry and identity regressions.
  * The matcher deliberately operates on normalized coordinates so fixtures remain stable across camera resolutions.
@@ -57,10 +81,13 @@ export function evaluateCvRegression(
   const candidatePairs: CvRegressionMatch[] = [];
 
   for (let expectationIndex = 0; expectationIndex < expectations.length; expectationIndex += 1) {
-    const expectationBounds = boundsOf(expectations[expectationIndex].corners);
+    const expectationBounds = normalizedBoundsOf(expectations[expectationIndex].corners);
 
     for (let observationIndex = 0; observationIndex < observations.length; observationIndex += 1) {
-      const iou = intersectionOverUnion(expectationBounds, boundsOf(observations[observationIndex].corners));
+      const iou = intersectionOverUnion(
+        expectationBounds,
+        normalizedBoundsOf(observations[observationIndex].corners),
+      );
       if (iou < resolvedOptions.minIou) continue;
 
       const expectedCardId = expectations[expectationIndex].cardId;
@@ -68,7 +95,8 @@ export function evaluateCvRegression(
         expectationIndex,
         observationIndex,
         iou,
-        identityMatches: expectedCardId === null || expectedCardId === observations[observationIndex].cardId,
+        identityMatches:
+          expectedCardId === null || expectedCardId === observations[observationIndex].cardId,
       });
     }
   }
@@ -80,7 +108,8 @@ export function evaluateCvRegression(
   const matches: CvRegressionMatch[] = [];
 
   for (const pair of candidatePairs) {
-    if (usedExpectations.has(pair.expectationIndex) || usedObservations.has(pair.observationIndex)) continue;
+    if (usedExpectations.has(pair.expectationIndex) || usedObservations.has(pair.observationIndex))
+      continue;
     usedExpectations.add(pair.expectationIndex);
     usedObservations.add(pair.observationIndex);
     matches.push(pair);
