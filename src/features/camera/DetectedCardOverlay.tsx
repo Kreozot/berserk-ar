@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { getCardById, type CardDefinition } from '../../catalog/cards';
+import { type CardDefinition, getCardById } from '../../catalog/cards';
 import type { Quadrilateral } from '../../core/vision/types';
 import type { OrbRecognitionDiagnostics } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { getOverlayLineGeometry } from './overlayGeometry';
@@ -95,9 +95,7 @@ export function DetectedCardOverlay({
             top,
             width: Math.max(44, right - left),
             height: Math.max(44, bottom - top),
-            backgroundColor: isRecognized
-              ? 'rgba(53,208,111,0.04)'
-              : 'rgba(240,180,41,0.035)',
+            backgroundColor: isRecognized ? 'rgba(53,208,111,0.04)' : 'rgba(240,180,41,0.035)',
           },
         ]}
       >

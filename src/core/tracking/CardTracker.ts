@@ -1,5 +1,5 @@
+import { type Bounds, boundsOf } from '../vision/geometry';
 import type { Quadrilateral, RecognitionResult } from '../vision/types';
-import { boundsOf, type Bounds } from '../vision/geometry';
 import { scoreTrackMatch } from './trackingPolicy';
 
 export type TrackObservation = {
@@ -47,7 +47,7 @@ const CONFIDENCE_ALPHA = 0.35;
 function updateIdentity(
   track: TrackState,
   recognition: RecognitionResult,
-  evaluated: boolean
+  evaluated: boolean,
 ): boolean {
   if (!evaluated) {
     return track.cardId !== null;
@@ -126,8 +126,15 @@ export class CardTracker {
     const pairs: PairScore[] = [];
 
     for (let trackIndex = 0; trackIndex < this.tracks.length; trackIndex += 1) {
-      for (let observationIndex = 0; observationIndex < observations.length; observationIndex += 1) {
-        const score = scoreTrackMatch(this.tracks[trackIndex].bounds, observationBounds[observationIndex]);
+      for (
+        let observationIndex = 0;
+        observationIndex < observations.length;
+        observationIndex += 1
+      ) {
+        const score = scoreTrackMatch(
+          this.tracks[trackIndex].bounds,
+          observationBounds[observationIndex],
+        );
         if (score !== null) {
           pairs.push({ trackIndex, observationIndex, score });
         }
@@ -176,7 +183,11 @@ export class CardTracker {
       track.corners = observation.corners;
       track.bounds = observationBounds[observationIndex];
       track.missedFrames = 0;
-      const retainedIdentity = updateIdentity(track, observation.recognition, observation.evaluated);
+      const retainedIdentity = updateIdentity(
+        track,
+        observation.recognition,
+        observation.evaluated,
+      );
 
       const recognition: RecognitionResult =
         track.cardId === null

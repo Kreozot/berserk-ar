@@ -1,10 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, useCameraPermission, useFrameOutput } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { getCardById, type CardDefinition } from '../../catalog/cards';
+import { type CardDefinition, getCardById } from '../../catalog/cards';
 import { CardTracker } from '../../core/tracking/CardTracker';
 import type { Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
@@ -14,9 +14,9 @@ import {
 } from '../../infrastructure/detection/opencv/detectCardQuadrilaterals';
 import {
   getOrbRuntimeCacheInitCount,
-  recognizeCardCandidatesWithOrb,
   type OrbRecognitionDiagnostics,
   type RecognizedCardCandidate,
+  recognizeCardCandidatesWithOrb,
 } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { CardModal } from '../card/CardModal';
 import { compactCvError, mapDetectorPointToPreview, type PreviewSize } from './cameraGeometry';
@@ -41,7 +41,7 @@ type CvStatsLogger = (
   detectMs: number,
   orbMs: number,
   totalMs: number,
-  cacheInitCount: number
+  cacheInitCount: number,
 ) => void;
 
 type CameraFeedProps = {
@@ -122,7 +122,7 @@ const CameraFeed = memo(function CameraFeed({
           scope.__berserkCvProcessedFrames = frameIndex;
           if (frameIndex % 10 === 0) {
             const recognizedCount = recognized.filter(
-              (candidate) => candidate.recognition.status === 'recognized'
+              (candidate) => candidate.recognition.status === 'recognized',
             ).length;
             scheduleOnRN(
               onCvStats,
@@ -132,7 +132,7 @@ const CameraFeed = memo(function CameraFeed({
               afterDetect - startedAt,
               finishedAt - afterDetect,
               finishedAt - startedAt,
-              getOrbRuntimeCacheInitCount()
+              getOrbRuntimeCacheInitCount(),
             );
           }
         } catch (error) {
@@ -148,7 +148,7 @@ const CameraFeed = memo(function CameraFeed({
   const outputs = useMemo(() => [frameOutput], [frameOutput]);
   const handleCameraError = useCallback(
     (error: { message: string }) => onCameraError(error.message),
-    [onCameraError]
+    [onCameraError],
   );
 
   return (
@@ -211,7 +211,7 @@ export function CameraScreen() {
           corners: detection.detectorCorners,
           recognition: detection.recognition,
           evaluated: detection.evaluated,
-        }))
+        })),
       );
 
       const viewDetections = tracked.map((track): ViewDetection => {
@@ -219,10 +219,30 @@ export function CameraScreen() {
         return {
           trackId: track.trackId,
           corners: [
-            mapDetectorPointToPreview(track.corners[0], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
-            mapDetectorPointToPreview(track.corners[1], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
-            mapDetectorPointToPreview(track.corners[2], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
-            mapDetectorPointToPreview(track.corners[3], previewSize, DETECTOR_WIDTH, DETECTOR_HEIGHT),
+            mapDetectorPointToPreview(
+              track.corners[0],
+              previewSize,
+              DETECTOR_WIDTH,
+              DETECTOR_HEIGHT,
+            ),
+            mapDetectorPointToPreview(
+              track.corners[1],
+              previewSize,
+              DETECTOR_WIDTH,
+              DETECTOR_HEIGHT,
+            ),
+            mapDetectorPointToPreview(
+              track.corners[2],
+              previewSize,
+              DETECTOR_WIDTH,
+              DETECTOR_HEIGHT,
+            ),
+            mapDetectorPointToPreview(
+              track.corners[3],
+              previewSize,
+              DETECTOR_WIDTH,
+              DETECTOR_HEIGHT,
+            ),
           ],
           recognition: track.recognition,
           diagnostics: source.diagnostics,
@@ -231,11 +251,11 @@ export function CameraScreen() {
       });
 
       setDetections((current) =>
-        current.length === 0 && viewDetections.length === 0 ? current : viewDetections
+        current.length === 0 && viewDetections.length === 0 ? current : viewDetections,
       );
       setDetectorError(null);
     },
-    [previewSize]
+    [previewSize],
   );
 
   const showDetectorError = useCallback((message: string) => {
@@ -247,17 +267,17 @@ export function CameraScreen() {
     (message: string) => {
       if (appState === 'active') setCameraError(message);
     },
-    [appState]
+    [appState],
   );
 
   const logCvStats = useCallback<CvStatsLogger>(
     (frameIndex, candidates, recognized, detectMs, orbMs, totalMs, cacheInitCount) => {
       console.log(
         `[BerserkCV] frame=${frameIndex} candidates=${candidates} recognized=${recognized} ` +
-          `detect=${detectMs}ms orb=${orbMs}ms total=${totalMs}ms cacheInit=${cacheInitCount}`
+          `detect=${detectMs}ms orb=${orbMs}ms total=${totalMs}ms cacheInit=${cacheInitCount}`,
       );
     },
-    []
+    [],
   );
 
   if (!hasPermission) {
@@ -277,7 +297,7 @@ export function CameraScreen() {
   const isCameraActive = appState === 'active' && selectedCard === null;
   const visibleError = detectorError ?? cameraError;
   const recognizedCount = detections.filter(
-    (detection) => detection.recognition.status === 'recognized'
+    (detection) => detection.recognition.status === 'recognized',
   ).length;
 
   return (
@@ -285,7 +305,7 @@ export function CameraScreen() {
       onLayout={(event) => {
         const { width, height } = event.nativeEvent.layout;
         setPreviewSize((current) =>
-          current?.width === width && current.height === height ? current : { width, height }
+          current?.width === width && current.height === height ? current : { width, height },
         );
       }}
       style={styles.container}
@@ -328,7 +348,9 @@ export function CameraScreen() {
 
       {visibleError ? (
         <View pointerEvents="none" style={styles.errorBadge}>
-          <Text numberOfLines={5} style={styles.errorText}>CV ERROR: {visibleError}</Text>
+          <Text numberOfLines={5} style={styles.errorText}>
+            CV ERROR: {visibleError}
+          </Text>
         </View>
       ) : null}
 

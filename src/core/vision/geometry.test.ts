@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-
-import type { Quadrilateral } from './types';
 import {
   boundsOf,
   edgeLengths,
@@ -16,6 +14,7 @@ import {
   quadrilateralAspect,
   sizeSimilarity,
 } from './geometry';
+import type { Quadrilateral } from './types';
 
 /** Builds an axis-aligned quadrilateral for concise geometry test fixtures. */
 function quad(left: number, top: number, width: number, height: number): Quadrilateral {
@@ -46,12 +45,7 @@ describe('vision geometry', () => {
 
   it('computes polygon area for either winding direction', () => {
     const rectangle = quad(0, 0, 10, 20);
-    const reversed: Quadrilateral = [
-      rectangle[3],
-      rectangle[2],
-      rectangle[1],
-      rectangle[0],
-    ];
+    const reversed: Quadrilateral = [rectangle[3], rectangle[2], rectangle[1], rectangle[0]];
     expect(polygonArea(rectangle)).toBe(200);
     expect(polygonArea(reversed)).toBe(200);
   });

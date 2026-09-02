@@ -29,7 +29,7 @@ describe('cardQuadGeometry', () => {
         { x: 10, y: 0 },
         { x: 10, y: 10 },
         { x: 0, y: 10 },
-      ])
+      ]),
     ).toBe(false);
   });
 
@@ -50,10 +50,10 @@ describe('cardQuadGeometry', () => {
   it('deduplicates nearby centers without merging adjacent cards', () => {
     const accepted = [{ centerX: 50, centerY: 50, width: 60, height: 90 }];
     expect(
-      overlapsAcceptedQuad({ centerX: 52, centerY: 52, width: 60, height: 90 }, accepted)
+      overlapsAcceptedQuad({ centerX: 52, centerY: 52, width: 60, height: 90 }, accepted),
     ).toBe(true);
     expect(
-      overlapsAcceptedQuad({ centerX: 120, centerY: 50, width: 60, height: 90 }, accepted)
+      overlapsAcceptedQuad({ centerX: 120, centerY: 50, width: 60, height: 90 }, accepted),
     ).toBe(false);
   });
 

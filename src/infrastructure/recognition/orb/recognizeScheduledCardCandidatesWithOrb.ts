@@ -1,23 +1,23 @@
-import type { RecognitionResult } from '../../../core/vision/types';
 import {
+  type Bounds,
   boundsOf,
   median,
   normalizedCenterDistance,
   sizeSimilarity,
-  type Bounds,
 } from '../../../core/vision/geometry';
+import type { RecognitionResult } from '../../../core/vision/types';
 import type { OpenCvCardCandidate } from '../../detection/opencv/detectCardQuadrilaterals';
+import {
+  type OrbRecognitionDiagnostics,
+  type RecognizedCardCandidate,
+  recognizeCardCandidatesWithOrbNow,
+} from './recognizeCardCandidatesWithOrbNow';
 import {
   isSceneChurned,
   isSceneShifted,
   scoreSchedulerMatch,
   shouldRunOrbForTrack,
 } from './schedulerPolicy';
-import {
-  recognizeCardCandidatesWithOrbNow,
-  type OrbRecognitionDiagnostics,
-  type RecognizedCardCandidate,
-} from './recognizeCardCandidatesWithOrbNow';
 
 type SchedulerTrack = {
   readonly trackId: number;
@@ -72,7 +72,7 @@ function getState(): SchedulerState {
 /** Creates a non-evaluated result so the UI tracker can retain identity without counting a stale vote. */
 function skippedResult(
   candidate: OpenCvCardCandidate,
-  cached: RecognizedCardCandidate
+  cached: RecognizedCardCandidate,
 ): RecognizedCardCandidate {
   'worklet';
   return {
@@ -88,7 +88,7 @@ function skippedResult(
  * Stable recognized tracks are rechecked periodically or immediately after geometry/scene changes.
  */
 export function recognizeScheduledCardCandidatesWithOrb(
-  candidates: readonly OpenCvCardCandidate[]
+  candidates: readonly OpenCvCardCandidate[],
 ): ScheduledRecognitionBatch {
   'worklet';
   const state = getState();
@@ -105,7 +105,10 @@ export function recognizeScheduledCardCandidatesWithOrb(
   const pairs: PairScore[] = [];
   for (let trackIndex = 0; trackIndex < state.tracks.length; trackIndex += 1) {
     for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
-      const score = scoreSchedulerMatch(state.tracks[trackIndex].bounds, candidateBounds[candidateIndex]);
+      const score = scoreSchedulerMatch(
+        state.tracks[trackIndex].bounds,
+        candidateBounds[candidateIndex],
+      );
       if (score !== null) pairs.push({ trackIndex, candidateIndex, score });
     }
   }
@@ -124,7 +127,10 @@ export function recognizeScheduledCardCandidatesWithOrb(
   }
 
   const matchedMotion = acceptedPairs.map((pair) =>
-    normalizedCenterDistance(state.tracks[pair.trackIndex].bounds, candidateBounds[pair.candidateIndex])
+    normalizedCenterDistance(
+      state.tracks[pair.trackIndex].bounds,
+      candidateBounds[pair.candidateIndex],
+    ),
   );
   if (
     isSceneShifted(median(matchedMotion), acceptedPairs.length) ||

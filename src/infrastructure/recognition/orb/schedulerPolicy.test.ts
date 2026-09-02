@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-
-import type { Quadrilateral } from '../../../core/vision/types';
 import { boundsOf } from '../../../core/vision/geometry';
+import type { Quadrilateral } from '../../../core/vision/types';
 import {
   isSceneChurned,
   isSceneShifted,

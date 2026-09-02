@@ -57,7 +57,7 @@ export function normalizeCardPerspective(source: Mat, corners: Quadrilateral): M
     transform = OpenCV.getPerspectiveTransform(
       sourcePoints,
       destinationPoints,
-      DecompTypes.DECOMP_LU
+      DecompTypes.DECOMP_LU,
     );
     OpenCV.warpPerspective(
       source,
@@ -66,7 +66,7 @@ export function normalizeCardPerspective(source: Mat, corners: Quadrilateral): M
       outputSize,
       InterpolationFlags.INTER_LINEAR,
       BorderTypes.BORDER_REPLICATE,
-      borderValue
+      borderValue,
     );
     return normalized;
   } catch (error) {

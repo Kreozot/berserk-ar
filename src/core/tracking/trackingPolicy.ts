@@ -19,10 +19,7 @@ export function scoreTrackMatch(trackBounds: Bounds, observationBounds: Bounds):
     return null;
   }
 
-  const centerScore = Math.max(
-    0,
-    1 - centerDistance / TRACK_MAX_NORMALIZED_CENTER_DISTANCE
-  );
+  const centerScore = Math.max(0, 1 - centerDistance / TRACK_MAX_NORMALIZED_CENTER_DISTANCE);
   const shapeScore = sizeSimilarity(trackBounds, observationBounds);
   return iou * 0.5 + centerScore * 0.35 + shapeScore * 0.15;
 }

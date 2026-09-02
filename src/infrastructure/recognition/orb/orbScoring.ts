@@ -16,7 +16,7 @@ export function requiredGoodMatches(queryDescriptors: number): number {
   'worklet';
   return Math.max(
     MIN_GOOD_MATCHES_FLOOR,
-    Math.min(MAX_GOOD_MATCHES_REQUIREMENT, Math.ceil(queryDescriptors * 0.12))
+    Math.min(MAX_GOOD_MATCHES_REQUIREMENT, Math.ceil(queryDescriptors * 0.12)),
   );
 }
 
@@ -24,7 +24,7 @@ export function requiredGoodMatches(queryDescriptors: number): number {
 export function scoreOrbConfidence(
   bestGoodMatches: number,
   secondBestGoodMatches: number,
-  queryDescriptors: number
+  queryDescriptors: number,
 ): number {
   'worklet';
   const matchStrength = clamp01(bestGoodMatches / 80);
@@ -37,7 +37,7 @@ export function scoreOrbConfidence(
 export function passesOrbRecognitionThresholds(
   bestGoodMatches: number,
   secondBestGoodMatches: number,
-  queryDescriptors: number
+  queryDescriptors: number,
 ): boolean {
   'worklet';
   const goodMatchRatio = bestGoodMatches / Math.max(queryDescriptors, 1);

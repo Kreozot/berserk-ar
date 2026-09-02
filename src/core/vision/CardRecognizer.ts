@@ -1,8 +1,4 @@
-import type {
-  CardReference,
-  NormalizedCardImage,
-  RecognitionResult,
-} from './types';
+import type { CardReference, NormalizedCardImage, RecognitionResult } from './types';
 
 /** Identifies an already detected and perspective-normalized card via a replaceable backend. */
 export interface CardRecognizer {

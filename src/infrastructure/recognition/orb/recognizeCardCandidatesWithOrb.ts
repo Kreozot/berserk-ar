@@ -1,6 +1,6 @@
 import type { OpenCvCardCandidate } from '../../detection/opencv/detectCardQuadrilaterals';
-import { recognizeScheduledCardCandidatesWithOrb } from './recognizeScheduledCardCandidatesWithOrb';
 import type { RecognizedCardCandidate } from './recognizeCardCandidatesWithOrbNow';
+import { recognizeScheduledCardCandidatesWithOrb } from './recognizeScheduledCardCandidatesWithOrb';
 
 export {
   getOrbRuntimeCacheInitCount,
@@ -10,7 +10,7 @@ export {
 
 /** Applies worklet-side scheduling and returns recognition results in candidate order. */
 export function recognizeCardCandidatesWithOrb(
-  candidates: readonly OpenCvCardCandidate[]
+  candidates: readonly OpenCvCardCandidate[],
 ): RecognizedCardCandidate[] {
   'worklet';
   return recognizeScheduledCardCandidatesWithOrb(candidates).results;

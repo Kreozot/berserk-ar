@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { CameraScreen } from './features/camera/CameraScreen';
 

@@ -1,12 +1,12 @@
 import {
+  type BFMatcher,
   ColorConversionCodes,
   DataTypes,
   Mat,
   NormTypes,
   OpenCV,
-  ORBScoreType,
-  type BFMatcher,
   type ORB,
+  ORBScoreType,
 } from 'react-native-fast-opencv';
 
 import type { Quadrilateral, RecognitionResult } from '../../../core/vision/types';
@@ -95,7 +95,7 @@ function createOrb(): ORB {
     ORB_WTA_K,
     ORBScoreType.HARRIS_SCORE,
     ORB_PATCH_SIZE,
-    ORB_FAST_THRESHOLD
+    ORB_FAST_THRESHOLD,
   );
 }
 
@@ -109,7 +109,7 @@ function createReferenceMats(): ReferenceMat[] {
       reference.rows,
       reference.cols,
       1,
-      new Uint8Array(reference.data)
+      new Uint8Array(reference.data),
     ),
   }));
 }
@@ -140,7 +140,7 @@ export function getOrbRuntimeCacheInitCount(): number {
 function countGoodMatches(
   matcher: BFMatcher,
   queryDescriptors: Mat,
-  referenceDescriptors: Mat
+  referenceDescriptors: Mat,
 ): number {
   'worklet';
   if (
@@ -149,7 +149,8 @@ function countGoodMatches(
     referenceDescriptors.rows <= 0 ||
     referenceDescriptors.cols <= 0 ||
     queryDescriptors.cols !== referenceDescriptors.cols
-  ) return 0;
+  )
+    return 0;
 
   const matches = OpenCV.knnMatchBF(matcher, queryDescriptors, referenceDescriptors, 2);
   try {
@@ -169,7 +170,7 @@ function recognizeOne(
   image: Mat,
   orb: ORB,
   matcher: BFMatcher,
-  references: readonly ReferenceMat[]
+  references: readonly ReferenceMat[],
 ): { recognition: RecognitionResult; diagnostics: OrbRecognitionDiagnostics } {
   'worklet';
   if (image.rows <= 0 || image.cols <= 0) return unknownResult();
@@ -200,7 +201,7 @@ function recognizeOne(
       const recognized = passesOrbRecognitionThresholds(
         best.goodMatches,
         second.goodMatches,
-        queryDescriptors
+        queryDescriptors,
       );
 
       return {
@@ -228,15 +229,25 @@ function recognizeOne(
 
 /** Immediately evaluates every supplied candidate with ORB, without scheduling/skipping. */
 export function recognizeCardCandidatesWithOrbNow(
-  candidates: readonly OpenCvCardCandidate[]
+  candidates: readonly OpenCvCardCandidate[],
 ): RecognizedCardCandidate[] {
   'worklet';
   if (candidates.length === 0) return [];
   const { orb, matcher, references } = getOrbRuntimeCache();
   return candidates.map((candidate) => {
     try {
-      const { recognition, diagnostics } = recognizeOne(candidate.normalizedImage, orb, matcher, references);
-      return { detectorCorners: candidate.detectorCorners, recognition, diagnostics, evaluated: true };
+      const { recognition, diagnostics } = recognizeOne(
+        candidate.normalizedImage,
+        orb,
+        matcher,
+        references,
+      );
+      return {
+        detectorCorners: candidate.detectorCorners,
+        recognition,
+        diagnostics,
+        evaluated: true,
+      };
     } catch {
       return {
         detectorCorners: candidate.detectorCorners,

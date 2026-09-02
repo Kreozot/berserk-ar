@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-
-import type { Quadrilateral } from '../vision/types';
 import { boundsOf } from '../vision/geometry';
+import type { Quadrilateral } from '../vision/types';
 import { scoreTrackMatch } from './trackingPolicy';
 
 /** Builds an axis-aligned card quadrilateral for track-matching fixtures. */
