@@ -16,6 +16,7 @@ export default defineConfig({
         'src/infrastructure/detection/opencv/perspectiveGeometry.ts',
         'src/infrastructure/recognition/orb/orbScoring.ts',
         'src/infrastructure/recognition/orb/schedulerPolicy.ts',
+        'src/testing/cvRegression.ts',
       ],
       thresholds: {
         perFile: true,
