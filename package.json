@@ -16,9 +16,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "expo": "~57.0.9",
-    "expo-build-properties": "~57.0.15",
-    "expo-dev-client": "~57.0.16",
+    "expo": "~57.0.19",
+    "expo-build-properties": "~57.0.16",
+    "expo-dev-client": "~57.0.18",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.3",
