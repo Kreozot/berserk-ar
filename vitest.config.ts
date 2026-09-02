@@ -1,0 +1,28 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary'],
+      include: [
+        'src/catalog/catalogLookup.ts',
+        'src/core/tracking/CardTracker.ts',
+        'src/core/tracking/trackingPolicy.ts',
+        'src/core/vision/geometry.ts',
+        'src/features/camera/cameraGeometry.ts',
+        'src/features/camera/overlayGeometry.ts',
+        'src/infrastructure/detection/opencv/cardQuadGeometry.ts',
+        'src/infrastructure/detection/opencv/perspectiveGeometry.ts',
+        'src/infrastructure/recognition/orb/orbScoring.ts',
+        'src/infrastructure/recognition/orb/schedulerPolicy.ts',
+      ],
+      thresholds: {
+        statements: 80,
+        branches: 75,
+        functions: 80,
+        lines: 80,
+      },
+    },
+  },
+});
