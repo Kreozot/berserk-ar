@@ -10,8 +10,8 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
-    "check": "biome check src index.ts vitest.config.ts",
-    "check:fix": "biome check --write src index.ts vitest.config.ts",
+    "check": "biome check src index.ts vitest.config.mts",
+    "check:fix": "biome check --write src index.ts vitest.config.mts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
