@@ -9,8 +9,10 @@
     "android:device": "expo run:android --device",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
+    "prepare": "husky",
     "typecheck": "tsc --noEmit",
     "check": "biome check src index.ts vitest.config.mts",
+    "check:staged": "biome check --staged --no-errors-on-unmatched",
     "check:fix": "biome check --write src index.ts vitest.config.mts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
@@ -34,6 +36,7 @@
     "@biomejs/biome": "2.5.11",
     "@types/react": "~19.2.2",
     "@vitest/coverage-v8": "4.1.11",
+    "husky": "^9.1.7",
     "typescript": "~6.0.3",
     "vitest": "4.1.11"
   },
