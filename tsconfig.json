@@ -7,7 +7,7 @@
   },
   "include": [
     "index.ts",
-    "vitest.config.ts",
+    "vitest.config.mts",
     "src/**/*.ts",
     "src/**/*.tsx"
   ]
