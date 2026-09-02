@@ -38,7 +38,11 @@ Corners use image-normalized coordinates, where `(0, 0)` is the top-left and `(1
 
 ```json
 {
+  "schemaVersion": 1,
+  "category": "four-cards",
   "description": "Four cards on a table, moderate perspective",
+  "minIou": 0.5,
+  "requireIdentity": true,
   "expectations": [
     {
       "label": "left-card",
@@ -55,6 +59,10 @@ Corners use image-normalized coordinates, where `(0, 0)` is the top-left and `(1
 ```
 
 Use `cardId: null` when the fixture is intentionally detector-only: the physical card rectangle must be found, but recognition may remain `UNKNOWN`.
+
+`schemaVersion` is currently `1`. `category` must be one of `single-card`, `four-cards`, `crowded-board`, `perspective`, `glare`, `partial-overlap`, or `false-positives`. A false-positive scene may use an empty `expectations` array when no physical card should be detected.
+
+Every fixture directory must contain exactly named `frame.jpg` and `expected.json` files. Expectation labels must be unique within the scene, corners must contain four finite points inside `0..1`, and optional `minIou` / `requireIdentity` values override the evaluator defaults. The unit suite validates every fixture directory automatically, so malformed annotations or missing frames fail before the fixture can enter the regression corpus.
 
 ## Matching policy
 
