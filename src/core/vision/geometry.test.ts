@@ -40,14 +40,20 @@ describe('vision geometry', () => {
         { x: 0, y: 10 },
         { x: 10, y: 0 },
         { x: 0, y: 0 },
-      ])
+      ]),
     ).toEqual(quad(0, 0, 10, 10));
   });
 
   it('computes polygon area for either winding direction', () => {
     const rectangle = quad(0, 0, 10, 20);
+    const reversed: Quadrilateral = [
+      rectangle[3],
+      rectangle[2],
+      rectangle[1],
+      rectangle[0],
+    ];
     expect(polygonArea(rectangle)).toBe(200);
-    expect(polygonArea([...rectangle].reverse() as Quadrilateral)).toBe(200);
+    expect(polygonArea(reversed)).toBe(200);
   });
 
   it('distinguishes convex, concave and collinear quadrilaterals', () => {
@@ -58,7 +64,7 @@ describe('vision geometry', () => {
         { x: 10, y: 0 },
         { x: 5, y: 5 },
         { x: 0, y: 10 },
-      ])
+      ]),
     ).toBe(false);
     expect(
       isConvexQuadrilateral([
@@ -66,7 +72,7 @@ describe('vision geometry', () => {
         { x: 5, y: 0 },
         { x: 10, y: 0 },
         { x: 0, y: 10 },
-      ])
+      ]),
     ).toBe(false);
   });
 
