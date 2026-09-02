@@ -3,6 +3,7 @@ node_modules/
 .expo-shared/
 android/
 ios/
+coverage/
 *.log
 .DS_Store
 .env
