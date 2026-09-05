@@ -115,6 +115,11 @@ export class CardTracker {
   private nextTrackNumber = 1;
   private tracks: TrackState[] = [];
 
+  /** Returns all live tracker entries, including briefly missing observations inside their TTL. */
+  get trackCount(): number {
+    return this.tracks.length;
+  }
+
   /** Drops all active tracks, for example after leaving the camera scene. */
   reset(): void {
     this.tracks = [];

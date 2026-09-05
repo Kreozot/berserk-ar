@@ -77,6 +77,18 @@ npm start
 
 VisionCamera/OpenCV являются native dependencies, поэтому обычного Expo Go недостаточно — нужен development/native build.
 
+### Live CV diagnostics
+
+Debug-панель с временем detector/ORB, количеством кандидатов, ORB checks/skips,
+распознанных карт, tracker entries и scene resets запускается отдельно:
+
+```bash
+npm run diagnostics:android
+```
+
+Панель требует development build и не включается в production даже при установленной переменной
+окружения.
+
 ## Архитектура CV
 
 ```text
