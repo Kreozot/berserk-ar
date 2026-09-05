@@ -11,6 +11,7 @@ import { recognizeCardCandidatesWithOrbNow } from '../infrastructure/recognition
 import type { CvFixtureAsset } from './cvFixtureAssets';
 import { centerCoverCrop, detectorQuadToFixture, rawPixelsToBgr } from './cvFixtureImage';
 import { cvFixtureRegressionOptions } from './cvFixtureManifest';
+import { missingCvFixtureAssetMessage } from './cvFixtureRunSummary';
 import {
   type CvRegressionObservation,
   type CvRegressionResult,
@@ -89,7 +90,12 @@ function saveDiagnosticImage(
 
 /** Runs one real JPEG through the same BGR detector and immediate ORB recognizer as live frames. */
 export async function runCvFixture(fixture: CvFixtureAsset): Promise<CvFixtureRunResult> {
-  const sourceImage = await Promise.resolve(loadImage({ resource: fixture.resourceName }));
+  let sourceImage: Awaited<ReturnType<typeof loadImage>>;
+  try {
+    sourceImage = await Promise.resolve(loadImage({ resource: fixture.resourceName }));
+  } catch (error) {
+    throw new Error(missingCvFixtureAssetMessage(fixture.name, error));
+  }
   const source = { width: sourceImage.width, height: sourceImage.height };
   const crop = centerCoverCrop(source, DETECTOR_SIZE);
   const croppedImage = sourceImage.crop(

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "expo start --dev-client",
     "capture:android": "cross-env EXPO_PUBLIC_CV_CAPTURE=1 expo run:android --device",
+    "preandroid:cv-regression": "expo prebuild --platform android --no-install",
     "android:cv-regression": "cross-env EXPO_PUBLIC_CV_REGRESSION=1 expo run:android --device",
     "android": "expo run:android",
     "android:device": "expo run:android --device",

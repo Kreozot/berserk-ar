@@ -97,6 +97,10 @@ Connect an Android device and run:
 npm run android:cv-regression
 ```
 
+The npm pre-script runs Expo prebuild first, so the debug fixture assets are refreshed even when an
+older generated `android/` directory already exists. Do not launch the previously installed APK
+directly after pulling new fixtures; rerun the command so Gradle installs the synchronized build.
+
 The debug-only screen automatically feeds all bundled fixtures through the same BGR detector,
 perspective normalization, and immediate ORB recognizer used by the live camera. It deliberately
 bypasses temporal ORB scheduling because every fixture is an independent still frame. Results are
