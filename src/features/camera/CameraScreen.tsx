@@ -1,6 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Camera, useCameraPermission, useFrameOutput } from 'react-native-vision-camera';
+import {
+  Camera,
+  type CameraRef,
+  useCameraPermission,
+  useFrameOutput,
+} from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
@@ -19,8 +24,15 @@ import {
   recognizeCardCandidatesWithOrb,
 } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { CardModal } from '../card/CardModal';
+import { CvFixtureCaptureControls } from './CvFixtureCaptureControls';
 import { compactCvError, mapDetectorPointToPreview, type PreviewSize } from './cameraGeometry';
+import { isCvFixtureCaptureEnabled } from './cvFixtureCapture';
 import { DetectedCardOverlay } from './DetectedCardOverlay';
+
+const CV_FIXTURE_CAPTURE_ENABLED = isCvFixtureCaptureEnabled(
+  __DEV__,
+  process.env.EXPO_PUBLIC_CV_CAPTURE,
+);
 
 type ViewDetection = {
   readonly trackId: string;
@@ -45,6 +57,7 @@ type CvStatsLogger = (
 ) => void;
 
 type CameraFeedProps = {
+  readonly cameraRef: RefObject<CameraRef | null>;
   readonly isActive: boolean;
   readonly onDetections: (detections: RecognizedCardCandidate[]) => void;
   readonly onCvError: (message: string) => void;
@@ -57,6 +70,7 @@ type CameraFeedProps = {
  * Keeping it memoized isolates native camera configuration from overlay state updates.
  */
 const CameraFeed = memo(function CameraFeed({
+  cameraRef,
   isActive,
   onDetections,
   onCvError,
@@ -158,6 +172,7 @@ const CameraFeed = memo(function CameraFeed({
       onError={handleCameraError}
       orientationSource="interface"
       outputs={outputs}
+      ref={cameraRef}
       resizeMode="cover"
       style={StyleSheet.absoluteFill}
     />
@@ -176,6 +191,7 @@ export function CameraScreen() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const cameraRef = useRef<CameraRef>(null);
   const trackerRef = useRef<CardTracker | null>(null);
   if (trackerRef.current === null) trackerRef.current = new CardTracker();
 
@@ -280,6 +296,23 @@ export function CameraScreen() {
     [],
   );
 
+  const captureFixtureFrame = useCallback(async () => {
+    const camera = cameraRef.current;
+    if (camera === null) throw new Error('Camera preview is not ready yet.');
+
+    const snapshot = await camera.takeSnapshot();
+    try {
+      const encoded = await snapshot.toEncodedImageDataAsync('jpg', 100);
+      return {
+        bytes: new Uint8Array(encoded.buffer),
+        width: encoded.width,
+        height: encoded.height,
+      };
+    } finally {
+      snapshot.dispose();
+    }
+  }, []);
+
   if (!hasPermission) {
     return (
       <View style={styles.permissionContainer}>
@@ -311,12 +344,17 @@ export function CameraScreen() {
       style={styles.container}
     >
       <CameraFeed
+        cameraRef={cameraRef}
         isActive={isCameraActive}
         onCameraError={showCameraError}
         onCvError={showDetectorError}
         onCvStats={logCvStats}
         onDetections={showDetections}
       />
+
+      {CV_FIXTURE_CAPTURE_ENABLED ? (
+        <CvFixtureCaptureControls captureFrame={captureFixtureFrame} />
+      ) : null}
 
       {detections.map((detection) => {
         const card =

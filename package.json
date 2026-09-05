@@ -5,6 +5,7 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start --dev-client",
+    "capture:android": "cross-env EXPO_PUBLIC_CV_CAPTURE=1 expo run:android --device",
     "android": "expo run:android",
     "android:device": "expo run:android --device",
     "ios": "expo run:ios",
@@ -18,9 +19,10 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "expo": "~57.0.19",
-    "expo-build-properties": "~57.0.16",
+    "expo": "~57.0.20",
+    "expo-build-properties": "~57.0.17",
     "expo-dev-client": "~57.0.18",
+    "expo-file-system": "~57.0.6",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.3",
@@ -36,6 +38,7 @@
     "@biomejs/biome": "2.5.11",
     "@types/react": "~19.2.2",
     "@vitest/coverage-v8": "4.1.11",
+    "cross-env": "^10.1.0",
     "husky": "^9.1.7",
     "typescript": "~6.0.3",
     "vitest": "4.1.11"

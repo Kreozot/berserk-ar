@@ -11,6 +11,7 @@ export default defineConfig({
         'src/core/tracking/trackingPolicy.ts',
         'src/core/vision/geometry.ts',
         'src/features/camera/cameraGeometry.ts',
+        'src/features/camera/cvFixtureCapture.ts',
         'src/features/camera/overlayGeometry.ts',
         'src/infrastructure/detection/opencv/cardQuadGeometry.ts',
         'src/infrastructure/detection/opencv/perspectiveGeometry.ts',
