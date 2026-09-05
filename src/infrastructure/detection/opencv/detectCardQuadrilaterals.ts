@@ -93,6 +93,8 @@ function readQuadrilateral(approx: PointVector): Quadrilateral {
 /** Filters and scores contours that look geometrically like individual physical cards. */
 function collectQuadrilaterals(
   contours: PointVectorOfVectors,
+  imageWidth: number,
+  imageHeight: number,
   imageArea: number,
   source: CandidateSource,
   scored: ScoredQuadrilateral[],
@@ -133,8 +135,7 @@ function collectQuadrilaterals(
 
         const rect = OpenCV.boundingRect(approx);
         try {
-          if (rect.width >= DETECTOR_WIDTH * 0.98 || rect.height >= DETECTOR_HEIGHT * 0.98)
-            continue;
+          if (rect.width >= imageWidth * 0.98 || rect.height >= imageHeight * 0.98) continue;
           scored.push({
             corners,
             area,
@@ -165,16 +166,12 @@ function collectQuadrilaterals(
 }
 
 /**
- * Detects card-like contours and perspective-normalizes each accepted candidate from one camera frame.
+ * Detects card-like contours and perspective-normalizes each accepted candidate from a BGR Mat.
  * The returned Mats are owned by the caller and must be released.
  */
-export function detectNormalizedCardCandidates(
-  frame: Frame,
-  resizer: Resizer,
-): OpenCvCardCandidate[] {
+export function detectNormalizedCardCandidatesFromBgr(input: Mat): OpenCvCardCandidate[] {
   'worklet';
 
-  const resized = resizer.resize(frame);
   const gray = Mat.create(0, 0, DataTypes.CV_8U);
   const blurred = Mat.create(0, 0, DataTypes.CV_8U);
   const edges = Mat.create(0, 0, DataTypes.CV_8U);
@@ -186,66 +183,60 @@ export function detectNormalizedCardCandidates(
   const closedContours = PointVectorOfVectors.create();
 
   try {
-    const pixels = new Uint8Array(resized.getPixelBuffer());
-    const input = Mat.createFromBuffer('uint8', DETECTOR_HEIGHT, DETECTOR_WIDTH, 3, pixels);
+    OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
+    OpenCV.GaussianBlur(gray, blurred, blurKernel, 0);
+    OpenCV.Canny(blurred, edges, 40, 120);
+    OpenCV.findContours(
+      edges,
+      rawContours,
+      RetrievalModes.RETR_LIST,
+      ContourApproximationModes.CHAIN_APPROX_SIMPLE,
+    );
+
+    OpenCV.morphologyEx(edges, closedEdges, MorphTypes.MORPH_CLOSE, closeKernel);
+    OpenCV.findContours(
+      closedEdges,
+      closedContours,
+      RetrievalModes.RETR_LIST,
+      ContourApproximationModes.CHAIN_APPROX_SIMPLE,
+    );
+
+    const imageArea = input.cols * input.rows;
+    const scored: ScoredQuadrilateral[] = [];
+    collectQuadrilaterals(rawContours, input.cols, input.rows, imageArea, 'raw', scored);
+    collectQuadrilaterals(closedContours, input.cols, input.rows, imageArea, 'closed', scored);
+
+    scored.sort((a, b) => {
+      if (a.source !== b.source) return a.source === 'raw' ? -1 : 1;
+      const qualityDelta = b.shapeScore - a.shapeScore;
+      if (Math.abs(qualityDelta) > 0.04) return qualityDelta;
+      return b.area - a.area;
+    });
+
+    const accepted: ScoredQuadrilateral[] = [];
+    for (const candidate of scored) {
+      if (!overlapsAcceptedQuad(candidate, accepted)) accepted.push(candidate);
+      if (accepted.length >= MAX_CANDIDATES) break;
+    }
+
+    const normalizedCandidates: OpenCvCardCandidate[] = [];
     try {
-      OpenCV.cvtColor(input, gray, ColorConversionCodes.COLOR_BGR2GRAY);
-      OpenCV.GaussianBlur(gray, blurred, blurKernel, 0);
-      OpenCV.Canny(blurred, edges, 40, 120);
-      OpenCV.findContours(
-        edges,
-        rawContours,
-        RetrievalModes.RETR_LIST,
-        ContourApproximationModes.CHAIN_APPROX_SIMPLE,
-      );
-
-      OpenCV.morphologyEx(edges, closedEdges, MorphTypes.MORPH_CLOSE, closeKernel);
-      OpenCV.findContours(
-        closedEdges,
-        closedContours,
-        RetrievalModes.RETR_LIST,
-        ContourApproximationModes.CHAIN_APPROX_SIMPLE,
-      );
-
-      const imageArea = DETECTOR_WIDTH * DETECTOR_HEIGHT;
-      const scored: ScoredQuadrilateral[] = [];
-      collectQuadrilaterals(rawContours, imageArea, 'raw', scored);
-      collectQuadrilaterals(closedContours, imageArea, 'closed', scored);
-
-      scored.sort((a, b) => {
-        if (a.source !== b.source) return a.source === 'raw' ? -1 : 1;
-        const qualityDelta = b.shapeScore - a.shapeScore;
-        if (Math.abs(qualityDelta) > 0.04) return qualityDelta;
-        return b.area - a.area;
-      });
-
-      const accepted: ScoredQuadrilateral[] = [];
-      for (const candidate of scored) {
-        if (!overlapsAcceptedQuad(candidate, accepted)) accepted.push(candidate);
-        if (accepted.length >= MAX_CANDIDATES) break;
-      }
-
-      const normalizedCandidates: OpenCvCardCandidate[] = [];
-      try {
-        for (const candidate of accepted) {
-          try {
-            const normalizedImage = normalizeCardPerspective(input, candidate.corners);
-            if (normalizedImage.rows > 0 && normalizedImage.cols > 0) {
-              normalizedCandidates.push({ detectorCorners: candidate.corners, normalizedImage });
-            } else {
-              normalizedImage.release();
-            }
-          } catch {
-            // A single malformed contour should not discard the valid cards in this frame.
+      for (const candidate of accepted) {
+        try {
+          const normalizedImage = normalizeCardPerspective(input, candidate.corners);
+          if (normalizedImage.rows > 0 && normalizedImage.cols > 0) {
+            normalizedCandidates.push({ detectorCorners: candidate.corners, normalizedImage });
+          } else {
+            normalizedImage.release();
           }
+        } catch {
+          // A single malformed contour should not discard the valid cards in this frame.
         }
-        return normalizedCandidates;
-      } catch (error) {
-        for (const candidate of normalizedCandidates) candidate.normalizedImage.release();
-        throw error;
       }
-    } finally {
-      input.release();
+      return normalizedCandidates;
+    } catch (error) {
+      for (const candidate of normalizedCandidates) candidate.normalizedImage.release();
+      throw error;
     }
   } finally {
     closedContours.release();
@@ -257,6 +248,29 @@ export function detectNormalizedCardCandidates(
     edges.release();
     blurred.release();
     gray.release();
+  }
+}
+
+/**
+ * Adapts a live camera frame to the shared BGR detector used by fixture regressions.
+ * The returned Mats are owned by the caller and must be released.
+ */
+export function detectNormalizedCardCandidates(
+  frame: Frame,
+  resizer: Resizer,
+): OpenCvCardCandidate[] {
+  'worklet';
+
+  const resized = resizer.resize(frame);
+  try {
+    const pixels = new Uint8Array(resized.getPixelBuffer());
+    const input = Mat.createFromBuffer('uint8', DETECTOR_HEIGHT, DETECTOR_WIDTH, 3, pixels);
+    try {
+      return detectNormalizedCardCandidatesFromBgr(input);
+    } finally {
+      input.release();
+    }
+  } finally {
     resized.dispose();
   }
 }

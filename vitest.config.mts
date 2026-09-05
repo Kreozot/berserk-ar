@@ -18,6 +18,9 @@ export default defineConfig({
         'src/infrastructure/recognition/orb/orbScoring.ts',
         'src/infrastructure/recognition/orb/schedulerPolicy.ts',
         'src/testing/cvFixtureManifest.ts',
+        'src/testing/cvFixtureImage.ts',
+        'src/testing/cvFixtureRunSummary.ts',
+        'src/testing/cvRegressionMode.ts',
         'src/testing/cvRegression.ts',
       ],
       thresholds: {

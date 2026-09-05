@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
+import { CV_FIXTURE_ASSETS } from './cvFixtureAssets';
 import {
   CV_FIXTURE_CATEGORIES,
   type CvFixtureManifest,
@@ -139,5 +139,20 @@ describe('CV fixture repository', () => {
     );
 
     expect(unknownReferences).toEqual([]);
+  });
+
+  it('registers every real frame for the Android on-device runner', () => {
+    const fixtureDirectories = readdirSync(FIXTURE_ROOT, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    const registeredNames = CV_FIXTURE_ASSETS.map(({ name }) => name).sort();
+
+    expect(registeredNames).toEqual(fixtureDirectories);
+    expect(
+      CV_FIXTURE_ASSETS.every(
+        ({ name, resourceName }) => resourceName === `cv-fixtures/${name}.jpg`,
+      ),
+    ).toBe(true);
   });
 });
