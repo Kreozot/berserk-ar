@@ -13,12 +13,11 @@
     },
     "android": {
       "package": "com.kreozot.berserkar",
-      "permissions": [
-        "android.permission.CAMERA"
-      ]
+      "permissions": ["android.permission.CAMERA"]
     },
     "plugins": [
       "expo-dev-client",
+      "./plugins/withCvRegressionFixtures",
       [
         "expo-build-properties",
         {

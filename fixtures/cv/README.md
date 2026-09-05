@@ -89,4 +89,25 @@ Detector-only runs can set `requireIdentity: false` while still reporting identi
 7. non-card rectangular objects that must not become detections;
 8. camera pan between two different groups of cards.
 
-The next integration step is an offline/on-device adapter that feeds each stored frame through the production detector/ORB pipeline and converts its output to `CvRegressionObservation[]`. The evaluator itself is intentionally pure and already CI-testable.
+## On-device regression runner
+
+Connect an Android device and run:
+
+```bash
+npm run android:cv-regression
+```
+
+The npm pre-script runs Expo prebuild first, so the debug fixture assets are refreshed even when an
+older generated `android/` directory already exists. Do not launch the previously installed APK
+directly after pulling new fixtures; rerun the command so Gradle installs the synchronized build.
+
+The debug-only screen automatically feeds all bundled fixtures through the same BGR detector,
+perspective normalization, and immediate ORB recognizer used by the live camera. It deliberately
+bypasses temporal ORB scheduling because every fixture is an independent still frame. Results are
+shown on-device, written to Metro logs with the `[BerserkCVRegression]` prefix, and saved as
+`cv-regression/latest.json` in the app's document directory. Failed scenes also produce annotated
+JPEGs under `cv-regression/diagnostics`: green contours are expected and red contours are observed.
+
+The fixture JPEGs are copied into Android's `debug` source set by the Expo config plugin, so they are
+not packaged in release APKs. The runner is also guarded by `__DEV__`, Android, and the explicit
+environment flag. Normal app and capture commands continue to mount the isolated `CameraFeed`.
