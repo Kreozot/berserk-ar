@@ -5,6 +5,7 @@ import {
   asQuadrilateral,
   isStableCardQuad,
   overlapsAcceptedQuad,
+  passesCardAspectGate,
   scoreCardShape,
   summarizeCardQuad,
 } from './cardQuadGeometry';
@@ -45,6 +46,57 @@ describe('cardQuadGeometry', () => {
     const poor = scoreCardShape(0.5, 63 / 89, 0.72, 0.5, 0.78);
     expect(ideal).toBeCloseTo(1);
     expect(ideal).toBeGreaterThan(poor);
+  });
+
+  it('gates extreme card aspects with stronger geometric evidence', () => {
+    expect(
+      passesCardAspectGate({
+        areaRatio: 0.01,
+        cardAspect: 0.7,
+        edgeSimilarity: 0.6,
+        angleCosine: 0.6,
+      }),
+    ).toBe(true);
+    expect(
+      passesCardAspectGate({
+        areaRatio: 0.054,
+        cardAspect: 0.35,
+        edgeSimilarity: 0.88,
+        angleCosine: 0.34,
+      }),
+    ).toBe(true);
+    expect(
+      passesCardAspectGate({
+        areaRatio: 0.01,
+        cardAspect: 0.35,
+        edgeSimilarity: 0.88,
+        angleCosine: 0.34,
+      }),
+    ).toBe(false);
+    expect(
+      passesCardAspectGate({
+        areaRatio: 0.02,
+        cardAspect: 0.92,
+        edgeSimilarity: 0.92,
+        angleCosine: 0.2,
+      }),
+    ).toBe(true);
+    expect(
+      passesCardAspectGate({
+        areaRatio: 0.02,
+        cardAspect: 0.92,
+        edgeSimilarity: 0.68,
+        angleCosine: 0.64,
+      }),
+    ).toBe(false);
+    expect(
+      passesCardAspectGate({
+        areaRatio: 0.1,
+        cardAspect: 0.98,
+        edgeSimilarity: 1,
+        angleCosine: 0,
+      }),
+    ).toBe(false);
   });
 
   it('deduplicates nearby centers without merging adjacent cards', () => {

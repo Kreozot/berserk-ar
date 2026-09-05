@@ -3,9 +3,11 @@ import { LineTypes, Mat, OpenCV, Point, Scalar } from 'react-native-fast-opencv'
 import { loadImage } from 'react-native-nitro-image';
 
 import {
+  createOpenCvDetectorDiagnostics,
   DETECTOR_HEIGHT,
   DETECTOR_WIDTH,
   detectNormalizedCardCandidatesFromBgr,
+  type OpenCvDetectorDiagnostics,
 } from '../infrastructure/detection/opencv/detectCardQuadrilaterals';
 import { recognizeCardCandidatesWithOrbNow } from '../infrastructure/recognition/orb/recognizeCardCandidatesWithOrbNow';
 import type { CvFixtureAsset } from './cvFixtureAssets';
@@ -24,6 +26,7 @@ export type CvFixtureRunResult = {
   readonly sourceWidth: number;
   readonly sourceHeight: number;
   readonly detectorMs: number;
+  readonly detectorDiagnostics: OpenCvDetectorDiagnostics;
   readonly orbMs: number;
   readonly diagnosticUri: string | null;
   readonly observations: readonly CvRegressionObservation[];
@@ -116,8 +119,9 @@ export async function runCvFixture(fixture: CvFixtureAsset): Promise<CvFixtureRu
 
   let candidates: ReturnType<typeof detectNormalizedCardCandidatesFromBgr> = [];
   try {
+    const detectorDiagnostics = createOpenCvDetectorDiagnostics();
     const detectorStartedAt = Date.now();
-    candidates = detectNormalizedCardCandidatesFromBgr(bgr);
+    candidates = detectNormalizedCardCandidatesFromBgr(bgr, detectorDiagnostics);
     const detectorFinishedAt = Date.now();
     const recognized = recognizeCardCandidatesWithOrbNow(candidates);
     const orbFinishedAt = Date.now();
@@ -139,6 +143,7 @@ export async function runCvFixture(fixture: CvFixtureAsset): Promise<CvFixtureRu
       sourceWidth: source.width,
       sourceHeight: source.height,
       detectorMs: detectorFinishedAt - detectorStartedAt,
+      detectorDiagnostics,
       orbMs: orbFinishedAt - detectorFinishedAt,
       diagnosticUri: evaluation.passed
         ? null

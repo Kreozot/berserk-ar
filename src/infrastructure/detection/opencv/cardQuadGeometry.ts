@@ -21,8 +21,24 @@ export type QuadCenterSize = {
   readonly height: number;
 };
 
+export type CardAspectGateMetrics = {
+  readonly areaRatio: number;
+  readonly cardAspect: number;
+  readonly edgeSimilarity: number;
+  readonly angleCosine: number;
+};
+
 export const MIN_QUAD_EDGE = 6;
 export const MIN_QUAD_AREA = 90;
+const MIN_CARD_ASPECT = 0.32;
+const MIN_UNRESTRICTED_CARD_ASPECT = 0.5;
+const MAX_UNRESTRICTED_CARD_ASPECT = 0.86;
+const MAX_CARD_ASPECT = 0.96;
+const MIN_EXTREME_PERSPECTIVE_AREA_RATIO = 0.025;
+const MIN_EXTREME_PERSPECTIVE_EDGE_SIMILARITY = 0.82;
+const MAX_EXTREME_PERSPECTIVE_ANGLE_COSINE = 0.45;
+const MIN_NEAR_SQUARE_EDGE_SIMILARITY = 0.88;
+const MAX_NEAR_SQUARE_ANGLE_COSINE = 0.3;
 
 /** Checks finite coordinates, minimum edge length, area and convexity for a candidate quad. */
 export function isStableCardQuad(corners: Quadrilateral): boolean {
@@ -42,6 +58,27 @@ export function summarizeCardQuad(corners: Quadrilateral): CardQuadSummary {
     edgeSimilarity: oppositeEdgeSimilarity(corners),
     angleCosine: maxAdjacentEdgeCosine(corners),
   };
+}
+
+/** Allows evidence-backed extreme aspects only when the remaining geometry is strong. */
+export function passesCardAspectGate(metrics: CardAspectGateMetrics): boolean {
+  'worklet';
+  const { areaRatio, cardAspect, edgeSimilarity, angleCosine } = metrics;
+  if (cardAspect < MIN_CARD_ASPECT || cardAspect > MAX_CARD_ASPECT) return false;
+  if (cardAspect < MIN_UNRESTRICTED_CARD_ASPECT) {
+    return (
+      areaRatio >= MIN_EXTREME_PERSPECTIVE_AREA_RATIO &&
+      edgeSimilarity >= MIN_EXTREME_PERSPECTIVE_EDGE_SIMILARITY &&
+      angleCosine <= MAX_EXTREME_PERSPECTIVE_ANGLE_COSINE
+    );
+  }
+  if (cardAspect > MAX_UNRESTRICTED_CARD_ASPECT) {
+    return (
+      edgeSimilarity >= MIN_NEAR_SQUARE_EDGE_SIMILARITY &&
+      angleCosine <= MAX_NEAR_SQUARE_ANGLE_COSINE
+    );
+  }
+  return true;
 }
 
 /** Computes the card-shape quality score used to rank accepted contours. */
