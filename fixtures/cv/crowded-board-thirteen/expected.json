@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "category": "crowded-board",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:03:56.194Z: thirteen-card board with the smallest cards and widest orientation spread in the corpus",
+  "expectations": [
+    {
+      "label": "column-3-storm-mage",
+      "cardId": "ll-007",
+      "corners": [
+        { "x": 0.743, "y": 0.098 },
+        { "x": 0.947, "y": 0.098 },
+        { "x": 0.947, "y": 0.262 },
+        { "x": 0.743, "y": 0.262 }
+      ]
+    },
+    {
+      "label": "column-3-child-of-blizzard",
+      "cardId": "ll-009",
+      "corners": [
+        { "x": 0.704, "y": 0.267 },
+        { "x": 0.949, "y": 0.267 },
+        { "x": 0.949, "y": 0.375 },
+        { "x": 0.704, "y": 0.375 }
+      ]
+    },
+    {
+      "label": "column-3-firemane",
+      "cardId": "ll-001",
+      "corners": [
+        { "x": 0.7, "y": 0.388 },
+        { "x": 0.941, "y": 0.388 },
+        { "x": 0.941, "y": 0.489 },
+        { "x": 0.7, "y": 0.489 }
+      ]
+    },
+    {
+      "label": "column-3-chronicler",
+      "cardId": "ll-019",
+      "corners": [
+        { "x": 0.703, "y": 0.496 },
+        { "x": 0.944, "y": 0.496 },
+        { "x": 0.944, "y": 0.605 },
+        { "x": 0.703, "y": 0.605 }
+      ]
+    },
+    {
+      "label": "column-3-orc-archer",
+      "cardId": "ll-004",
+      "corners": [
+        { "x": 0.679, "y": 0.622 },
+        { "x": 0.926, "y": 0.622 },
+        { "x": 0.926, "y": 0.729 },
+        { "x": 0.679, "y": 0.729 }
+      ]
+    },
+    {
+      "label": "column-2-orc-bully",
+      "cardId": "ll-005",
+      "corners": [
+        { "x": 0.409, "y": 0.081 },
+        { "x": 0.634, "y": 0.081 },
+        { "x": 0.634, "y": 0.25 },
+        { "x": 0.409, "y": 0.25 }
+      ]
+    },
+    {
+      "label": "column-2-tsvar",
+      "cardId": "ll-010",
+      "corners": [
+        { "x": 0.345, "y": 0.259 },
+        { "x": 0.656, "y": 0.259 },
+        { "x": 0.656, "y": 0.374 },
+        { "x": 0.345, "y": 0.374 }
+      ]
+    },
+    {
+      "label": "column-2-potion-seller",
+      "cardId": "ll-011",
+      "corners": [
+        { "x": 0.364, "y": 0.378 },
+        { "x": 0.673, "y": 0.378 },
+        { "x": 0.673, "y": 0.489 },
+        { "x": 0.364, "y": 0.489 }
+      ]
+    },
+    {
+      "label": "column-2-gnome-archer",
+      "cardId": "ll-006",
+      "corners": [
+        { "x": 0.362, "y": 0.504 },
+        { "x": 0.654, "y": 0.504 },
+        { "x": 0.654, "y": 0.615 },
+        { "x": 0.362, "y": 0.615 }
+      ]
+    },
+    {
+      "label": "column-2-troll-warrior",
+      "cardId": "ll-018",
+      "corners": [
+        { "x": 0.36, "y": 0.635 },
+        { "x": 0.639, "y": 0.635 },
+        { "x": 0.639, "y": 0.76 },
+        { "x": 0.36, "y": 0.76 }
+      ]
+    },
+    {
+      "label": "column-1-blade-slave",
+      "cardId": "ll-017",
+      "corners": [
+        { "x": 0.051, "y": 0.214 },
+        { "x": 0.319, "y": 0.214 },
+        { "x": 0.319, "y": 0.389 },
+        { "x": 0.051, "y": 0.389 }
+      ]
+    },
+    {
+      "label": "column-1-toa-dana-guard",
+      "cardId": "ll-002",
+      "corners": [
+        { "x": 0.049, "y": 0.397 },
+        { "x": 0.306, "y": 0.397 },
+        { "x": 0.306, "y": 0.566 },
+        { "x": 0.049, "y": 0.566 }
+      ]
+    },
+    {
+      "label": "column-1-olgerd",
+      "cardId": "ll-014",
+      "corners": [
+        { "x": 0.046, "y": 0.59 },
+        { "x": 0.338, "y": 0.59 },
+        { "x": 0.338, "y": 0.776 },
+        { "x": 0.046, "y": 0.776 }
+      ]
+    }
+  ]
+}

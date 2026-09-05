@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "category": "perspective",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:05:41.824Z: three cards with independent rotations and one corner close to the frame edge",
+  "expectations": [
+    {
+      "label": "top-left-toa-dana-guard",
+      "cardId": "ll-002",
+      "corners": [
+        { "x": 0.194, "y": 0.277 },
+        { "x": 0.455, "y": 0.293 },
+        { "x": 0.287, "y": 0.403 },
+        { "x": 0.004, "y": 0.359 }
+      ]
+    },
+    {
+      "label": "top-right-olgerd",
+      "cardId": "ll-014",
+      "corners": [
+        { "x": 0.469, "y": 0.307 },
+        { "x": 0.896, "y": 0.303 },
+        { "x": 0.949, "y": 0.382 },
+        { "x": 0.464, "y": 0.382 }
+      ]
+    },
+    {
+      "label": "bottom-left-iron-golem",
+      "cardId": "ll-008",
+      "corners": [
+        { "x": 0.115, "y": 0.406 },
+        { "x": 0.486, "y": 0.402 },
+        { "x": 0.494, "y": 0.574 },
+        { "x": 0.033, "y": 0.565 }
+      ]
+    }
+  ]
+}

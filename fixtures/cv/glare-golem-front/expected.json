@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "glare",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:06:44.677Z: upright Iron Golem with a bright specular reflection across the artwork",
+  "expectations": [
+    {
+      "label": "iron-golem-glare",
+      "cardId": "ll-008",
+      "corners": [
+        { "x": 0.27, "y": 0.35 },
+        { "x": 0.814, "y": 0.349 },
+        { "x": 0.831, "y": 0.705 },
+        { "x": 0.206, "y": 0.703 }
+      ]
+    }
+  ]
+}

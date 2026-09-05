@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "category": "crowded-board",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:03:20.113Z: eight small cards in two rows with large background clutter",
+  "expectations": [
+    {
+      "label": "top-1-child-of-blizzard",
+      "cardId": "ll-009",
+      "corners": [
+        { "x": 0.04, "y": 0.41 },
+        { "x": 0.26, "y": 0.41 },
+        { "x": 0.26, "y": 0.53 },
+        { "x": 0.04, "y": 0.53 }
+      ]
+    },
+    {
+      "label": "top-2-firemane",
+      "cardId": "ll-001",
+      "corners": [
+        { "x": 0.28, "y": 0.41 },
+        { "x": 0.48, "y": 0.41 },
+        { "x": 0.48, "y": 0.52 },
+        { "x": 0.28, "y": 0.52 }
+      ]
+    },
+    {
+      "label": "top-3-chronicler",
+      "cardId": "ll-019",
+      "corners": [
+        { "x": 0.49, "y": 0.405 },
+        { "x": 0.68, "y": 0.405 },
+        { "x": 0.68, "y": 0.52 },
+        { "x": 0.49, "y": 0.52 }
+      ]
+    },
+    {
+      "label": "top-4-orc-archer",
+      "cardId": "ll-004",
+      "corners": [
+        { "x": 0.73, "y": 0.41 },
+        { "x": 0.95, "y": 0.41 },
+        { "x": 0.95, "y": 0.53 },
+        { "x": 0.73, "y": 0.53 }
+      ]
+    },
+    {
+      "label": "bottom-1-tsvar",
+      "cardId": "ll-010",
+      "corners": [
+        { "x": 0.04, "y": 0.53 },
+        { "x": 0.25, "y": 0.53 },
+        { "x": 0.25, "y": 0.66 },
+        { "x": 0.04, "y": 0.66 }
+      ]
+    },
+    {
+      "label": "bottom-2-potion-seller",
+      "cardId": "ll-011",
+      "corners": [
+        { "x": 0.27, "y": 0.53 },
+        { "x": 0.49, "y": 0.53 },
+        { "x": 0.49, "y": 0.66 },
+        { "x": 0.27, "y": 0.66 }
+      ]
+    },
+    {
+      "label": "bottom-3-gnome-archer",
+      "cardId": "ll-006",
+      "corners": [
+        { "x": 0.5, "y": 0.53 },
+        { "x": 0.72, "y": 0.53 },
+        { "x": 0.72, "y": 0.66 },
+        { "x": 0.5, "y": 0.66 }
+      ]
+    },
+    {
+      "label": "bottom-4-troll-warrior",
+      "cardId": "ll-018",
+      "corners": [
+        { "x": 0.74, "y": 0.53 },
+        { "x": 0.96, "y": 0.53 },
+        { "x": 0.96, "y": 0.66 },
+        { "x": 0.74, "y": 0.66 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "perspective",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:00:27.734Z: Gnome Archer rotated about 90 degrees with mild perspective",
+  "expectations": [
+    {
+      "label": "gnome-archer-rotated",
+      "cardId": "ll-006",
+      "corners": [
+        { "x": 0.124, "y": 0.17 },
+        { "x": 0.973, "y": 0.172 },
+        { "x": 0.949, "y": 0.439 },
+        { "x": 0.035, "y": 0.413 }
+      ]
+    }
+  ]
+}

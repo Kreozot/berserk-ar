@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "perspective",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:05:00.195Z: Iron Golem viewed from a low oblique angle with a wide trapezoid",
+  "expectations": [
+    {
+      "label": "iron-golem",
+      "cardId": "ll-008",
+      "corners": [
+        { "x": 0.21, "y": 0.39 },
+        { "x": 0.725, "y": 0.389 },
+        { "x": 0.897, "y": 0.611 },
+        { "x": 0.167, "y": 0.615 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "single-card",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:00:15.037Z: one upright Gnome Archer on a light table",
+  "expectations": [
+    {
+      "label": "gnome-archer",
+      "cardId": "ll-006",
+      "corners": [
+        { "x": 0.232, "y": 0.257 },
+        { "x": 0.788, "y": 0.241 },
+        { "x": 0.841, "y": 0.609 },
+        { "x": 0.193, "y": 0.612 }
+      ]
+    }
+  ]
+}
