@@ -11,6 +11,11 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { type CardDefinition, getCardById } from '../../catalog/cards';
 import { CardTracker } from '../../core/tracking/CardTracker';
+import {
+  completeFrameDiagnostics,
+  type FrameDiagnostics,
+  type FrameProcessingDiagnostics,
+} from '../../core/vision/frameDiagnostics';
 import type { Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
   DETECTOR_HEIGHT,
@@ -18,20 +23,25 @@ import {
   detectNormalizedCardCandidates,
 } from '../../infrastructure/detection/opencv/detectCardQuadrilaterals';
 import {
-  getOrbRuntimeCacheInitCount,
   type OrbRecognitionDiagnostics,
   type RecognizedCardCandidate,
-  recognizeCardCandidatesWithOrb,
+  recognizeCardCandidatesWithOrbBatch,
 } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { CardModal } from '../card/CardModal';
+import { CvDiagnosticsPanel } from './CvDiagnosticsPanel';
 import { CvFixtureCaptureControls } from './CvFixtureCaptureControls';
 import { compactCvError, mapDetectorPointToPreview, type PreviewSize } from './cameraGeometry';
+import { isCvDiagnosticsEnabled } from './cvDiagnostics';
 import { isCvFixtureCaptureEnabled } from './cvFixtureCapture';
 import { DetectedCardOverlay } from './DetectedCardOverlay';
 
 const CV_FIXTURE_CAPTURE_ENABLED = isCvFixtureCaptureEnabled(
   __DEV__,
   process.env.EXPO_PUBLIC_CV_CAPTURE,
+);
+const CV_DIAGNOSTICS_ENABLED = isCvDiagnosticsEnabled(
+  __DEV__,
+  process.env.EXPO_PUBLIC_CV_DIAGNOSTICS,
 );
 
 type ViewDetection = {
@@ -46,23 +56,16 @@ type CvWorkletGlobal = typeof globalThis & {
   __berserkCvProcessedFrames?: number;
 };
 
-type CvStatsLogger = (
-  frameIndex: number,
-  candidates: number,
-  recognized: number,
-  detectMs: number,
-  orbMs: number,
-  totalMs: number,
-  cacheInitCount: number,
-) => void;
-
 type CameraFeedProps = {
   readonly cameraRef: RefObject<CameraRef | null>;
+  readonly diagnosticsEnabled: boolean;
   readonly isActive: boolean;
-  readonly onDetections: (detections: RecognizedCardCandidate[]) => void;
+  readonly onDetections: (
+    detections: RecognizedCardCandidate[],
+    diagnostics: FrameProcessingDiagnostics | null,
+  ) => void;
   readonly onCvError: (message: string) => void;
   readonly onCameraError: (message: string) => void;
-  readonly onCvStats: CvStatsLogger;
 };
 
 /**
@@ -71,11 +74,11 @@ type CameraFeedProps = {
  */
 const CameraFeed = memo(function CameraFeed({
   cameraRef,
+  diagnosticsEnabled,
   isActive,
   onDetections,
   onCvError,
   onCameraError,
-  onCvStats,
 }: CameraFeedProps) {
   const { resizer, error: resizerError } = useResizer({
     width: DETECTOR_WIDTH,
@@ -127,28 +130,25 @@ const CameraFeed = memo(function CameraFeed({
         frameDisposed = true;
 
         try {
-          const recognized = recognizeCardCandidatesWithOrb(candidates);
+          const recognitionBatch = recognizeCardCandidatesWithOrbBatch(candidates);
           const finishedAt = Date.now();
-          scheduleOnRN(onDetections, recognized);
 
           const scope = globalThis as CvWorkletGlobal;
           const frameIndex = (scope.__berserkCvProcessedFrames ?? 0) + 1;
           scope.__berserkCvProcessedFrames = frameIndex;
-          if (frameIndex % 10 === 0) {
-            const recognizedCount = recognized.filter(
-              (candidate) => candidate.recognition.status === 'recognized',
-            ).length;
-            scheduleOnRN(
-              onCvStats,
-              frameIndex,
-              candidates.length,
-              recognizedCount,
-              afterDetect - startedAt,
-              finishedAt - afterDetect,
-              finishedAt - startedAt,
-              getOrbRuntimeCacheInitCount(),
-            );
-          }
+          const diagnostics: FrameProcessingDiagnostics | null = diagnosticsEnabled
+            ? {
+                frameIndex,
+                detectorMs: afterDetect - startedAt,
+                orbMs: finishedAt - afterDetect,
+                totalMs: finishedAt - startedAt,
+                candidates: candidates.length,
+                orbChecked: recognitionBatch.orbCandidates,
+                orbSkipped: candidates.length - recognitionBatch.orbCandidates,
+                sceneReset: recognitionBatch.sceneReset,
+              }
+            : null;
+          scheduleOnRN(onDetections, recognitionBatch.results, diagnostics);
         } catch (error) {
           scheduleOnRN(onCvError, compactCvError('ORB', error));
         }
@@ -189,6 +189,7 @@ export function CameraScreen() {
   const [detections, setDetections] = useState<ViewDetection[]>([]);
   const [detectorError, setDetectorError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [frameDiagnostics, setFrameDiagnostics] = useState<FrameDiagnostics | null>(null);
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const cameraRef = useRef<CameraRef>(null);
@@ -205,6 +206,7 @@ export function CameraScreen() {
       if (nextState !== 'active') {
         trackerRef.current?.reset();
         setDetections([]);
+        setFrameDiagnostics(null);
         setCameraError(null);
       }
     });
@@ -215,14 +217,19 @@ export function CameraScreen() {
     if (selectedCard !== null) {
       trackerRef.current?.reset();
       setDetections([]);
+      setFrameDiagnostics(null);
     }
   }, [selectedCard]);
 
   const showDetections = useCallback(
-    (cameraDetections: RecognizedCardCandidate[]) => {
+    (
+      cameraDetections: RecognizedCardCandidate[],
+      processingDiagnostics: FrameProcessingDiagnostics | null,
+    ) => {
       if (previewSize === null || trackerRef.current === null) return;
 
-      const tracked = trackerRef.current.update(
+      const tracker = trackerRef.current;
+      const tracked = tracker.update(
         cameraDetections.map((detection) => ({
           corners: detection.detectorCorners,
           recognition: detection.recognition,
@@ -269,6 +276,26 @@ export function CameraScreen() {
       setDetections((current) =>
         current.length === 0 && viewDetections.length === 0 ? current : viewDetections,
       );
+      if (processingDiagnostics !== null) {
+        const recognized = tracked.filter(
+          (track) => track.recognition.status === 'recognized',
+        ).length;
+        const diagnostics = completeFrameDiagnostics(
+          processingDiagnostics,
+          recognized,
+          tracker.trackCount,
+        );
+        setFrameDiagnostics(diagnostics);
+        if (diagnostics.frameIndex % 10 === 0) {
+          console.log(
+            `[BerserkCV] frame=${diagnostics.frameIndex} candidates=${diagnostics.candidates} ` +
+              `orbChecked=${diagnostics.orbChecked} orbSkipped=${diagnostics.orbSkipped} ` +
+              `recognized=${diagnostics.recognized} tracker=${diagnostics.trackerCount} ` +
+              `sceneReset=${diagnostics.sceneReset} detect=${diagnostics.detectorMs}ms ` +
+              `orb=${diagnostics.orbMs}ms total=${diagnostics.totalMs}ms`,
+          );
+        }
+      }
       setDetectorError(null);
     },
     [previewSize],
@@ -284,16 +311,6 @@ export function CameraScreen() {
       if (appState === 'active') setCameraError(message);
     },
     [appState],
-  );
-
-  const logCvStats = useCallback<CvStatsLogger>(
-    (frameIndex, candidates, recognized, detectMs, orbMs, totalMs, cacheInitCount) => {
-      console.log(
-        `[BerserkCV] frame=${frameIndex} candidates=${candidates} recognized=${recognized} ` +
-          `detect=${detectMs}ms orb=${orbMs}ms total=${totalMs}ms cacheInit=${cacheInitCount}`,
-      );
-    },
-    [],
   );
 
   const captureFixtureFrame = useCallback(async () => {
@@ -345,16 +362,18 @@ export function CameraScreen() {
     >
       <CameraFeed
         cameraRef={cameraRef}
+        diagnosticsEnabled={CV_DIAGNOSTICS_ENABLED}
         isActive={isCameraActive}
         onCameraError={showCameraError}
         onCvError={showDetectorError}
-        onCvStats={logCvStats}
         onDetections={showDetections}
       />
 
       {CV_FIXTURE_CAPTURE_ENABLED ? (
         <CvFixtureCaptureControls captureFrame={captureFixtureFrame} />
       ) : null}
+
+      {CV_DIAGNOSTICS_ENABLED ? <CvDiagnosticsPanel diagnostics={frameDiagnostics} /> : null}
 
       {detections.map((detection) => {
         const card =
@@ -375,7 +394,10 @@ export function CameraScreen() {
         );
       })}
 
-      <View pointerEvents="none" style={styles.debugBadge}>
+      <View
+        pointerEvents="none"
+        style={[styles.debugBadge, CV_DIAGNOSTICS_ENABLED && styles.debugBadgeWithPanel]}
+      >
         <Text style={styles.debugText}>
           OPENCV + ORB + TRACK · {recognizedCount}/{detections.length}
         </Text>
@@ -433,6 +455,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   debugText: { color: '#ffffff', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  debugBadgeWithPanel: { top: 146 },
   debugSubtext: {
     marginTop: 3,
     color: '#cccccc',

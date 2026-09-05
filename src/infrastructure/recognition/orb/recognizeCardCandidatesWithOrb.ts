@@ -1,6 +1,9 @@
 import type { OpenCvCardCandidate } from '../../detection/opencv/detectCardQuadrilaterals';
 import type { RecognizedCardCandidate } from './recognizeCardCandidatesWithOrbNow';
-import { recognizeScheduledCardCandidatesWithOrb } from './recognizeScheduledCardCandidatesWithOrb';
+import {
+  recognizeScheduledCardCandidatesWithOrb,
+  type ScheduledRecognitionBatch,
+} from './recognizeScheduledCardCandidatesWithOrb';
 
 export {
   getOrbRuntimeCacheInitCount,
@@ -14,4 +17,12 @@ export function recognizeCardCandidatesWithOrb(
 ): RecognizedCardCandidate[] {
   'worklet';
   return recognizeScheduledCardCandidatesWithOrb(candidates).results;
+}
+
+/** Applies worklet-side scheduling and exposes the counts needed by frame diagnostics. */
+export function recognizeCardCandidatesWithOrbBatch(
+  candidates: readonly OpenCvCardCandidate[],
+): ScheduledRecognitionBatch {
+  'worklet';
+  return recognizeScheduledCardCandidatesWithOrb(candidates);
 }

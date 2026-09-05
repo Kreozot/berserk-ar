@@ -111,3 +111,18 @@ JPEGs under `cv-regression/diagnostics`: green contours are expected and red con
 The fixture JPEGs are copied into Android's `debug` source set by the Expo config plugin, so they are
 not packaged in release APKs. The runner is also guarded by `__DEV__`, Android, and the explicit
 environment flag. Normal app and capture commands continue to mount the isolated `CameraFeed`.
+
+## Debugging a regression in the live pipeline
+
+After a still fixture identifies a suspicious detector or recognizer change, connect the physical
+device and run:
+
+```bash
+npm run diagnostics:android
+```
+
+The opt-in panel shows detector, ORB, and total processing time; candidate count; ORB checks and
+scheduler skips; identities retained by the UI tracker; live tracker entries; and scene resets.
+Every tenth processed frame is also written to Metro logs with the `[BerserkCV]` prefix. These live
+measurements complement the deterministic still runner: do not replace fixture evidence with a
+single camera observation, and do not compare emulator timings with physical-device timings.

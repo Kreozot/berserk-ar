@@ -47,6 +47,7 @@ type WorkletGlobal = typeof globalThis & {
 export type ScheduledRecognitionBatch = {
   readonly results: RecognizedCardCandidate[];
   readonly orbCandidates: number;
+  readonly sceneReset: boolean;
 };
 
 const RECHECK_INTERVAL_FRAMES = 5;
@@ -97,7 +98,7 @@ export function recognizeScheduledCardCandidatesWithOrb(
   if (candidates.length === 0) {
     for (const track of state.tracks) track.missedFrames += 1;
     state.tracks = state.tracks.filter((track) => track.missedFrames <= MAX_MISSED_FRAMES);
-    return { results: [], orbCandidates: 0 };
+    return { results: [], orbCandidates: 0, sceneReset: false };
   }
 
   const previousTrackCount = state.tracks.length;
@@ -132,10 +133,10 @@ export function recognizeScheduledCardCandidatesWithOrb(
       candidateBounds[pair.candidateIndex],
     ),
   );
-  if (
+  const sceneReset =
     isSceneShifted(median(matchedMotion), acceptedPairs.length) ||
-    isSceneChurned(previousTrackCount, candidates.length, acceptedPairs.length)
-  ) {
+    isSceneChurned(previousTrackCount, candidates.length, acceptedPairs.length);
+  if (sceneReset) {
     state.forceOrbFramesRemaining = SCENE_FORCE_ORB_FRAMES;
   }
 
@@ -219,5 +220,5 @@ export function recognizeScheduledCardCandidatesWithOrb(
 
   if (state.forceOrbFramesRemaining > 0) state.forceOrbFramesRemaining -= 1;
   state.tracks = state.tracks.filter((track) => track.missedFrames <= MAX_MISSED_FRAMES);
-  return { results, orbCandidates: selectedCandidates.length };
+  return { results, orbCandidates: selectedCandidates.length, sceneReset };
 }

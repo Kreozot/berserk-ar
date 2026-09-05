@@ -102,7 +102,9 @@ describe('CardTracker', () => {
   it('reset forgets prior physical tracks', () => {
     const tracker = new CardTracker();
     const before = tracker.update([recognized('ll-001')])[0];
+    expect(tracker.trackCount).toBe(1);
     tracker.reset();
+    expect(tracker.trackCount).toBe(0);
     const after = tracker.update([recognized('ll-001')])[0];
     expect(after.trackId).not.toBe(before.trackId);
   });
@@ -110,7 +112,9 @@ describe('CardTracker', () => {
   it('removes a missing track after its TTL', () => {
     const tracker = new CardTracker();
     const before = tracker.update([recognized('ll-001')])[0];
+    expect(tracker.trackCount).toBe(1);
     for (let index = 0; index < 9; index += 1) tracker.update([]);
+    expect(tracker.trackCount).toBe(0);
     const after = tracker.update([recognized('ll-001')])[0];
     expect(after.trackId).not.toBe(before.trackId);
   });
