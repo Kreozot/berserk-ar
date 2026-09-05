@@ -19,6 +19,7 @@ import type { Point, Quadrilateral } from '../../../core/vision/types';
 import {
   isStableCardQuad,
   overlapsAcceptedQuad,
+  passesCardAspectGate,
   scoreCardShape,
   summarizeCardQuad,
 } from './cardQuadGeometry';
@@ -34,8 +35,6 @@ export const RECOGNITION_HEIGHT = DETECTOR_HEIGHT;
 const EXPECTED_CARD_ASPECT = 63 / 89;
 const MIN_AREA_RATIO = 0.0025;
 const MAX_AREA_RATIO = 0.72;
-const MIN_CARD_ASPECT = 0.5;
-const MAX_CARD_ASPECT = 0.86;
 const MIN_CONTOUR_QUAD_FILL = 0.72;
 const MAX_CONTOUR_QUAD_FILL = 1.28;
 const MAX_PERIMETER_EXCESS = 1.45;
@@ -62,6 +61,43 @@ export type OpenCvCardCandidate = {
   detectorCorners: Quadrilateral;
   normalizedImage: Mat;
 };
+
+export type OpenCvDetectorDiagnostics = {
+  rawContours: number;
+  closedContours: number;
+  areaRejected: number;
+  notQuadrilateral: number;
+  unstable: number;
+  fillRejected: number;
+  perimeterRejected: number;
+  aspectRejected: number;
+  oppositeEdgesRejected: number;
+  anglesRejected: number;
+  frameBoundsRejected: number;
+  scored: number;
+  duplicates: number;
+  accepted: number;
+};
+
+/** Creates mutable counters populated only when detector diagnostics are explicitly requested. */
+export function createOpenCvDetectorDiagnostics(): OpenCvDetectorDiagnostics {
+  return {
+    rawContours: 0,
+    closedContours: 0,
+    areaRejected: 0,
+    notQuadrilateral: 0,
+    unstable: 0,
+    fillRejected: 0,
+    perimeterRejected: 0,
+    aspectRejected: 0,
+    oppositeEdgesRejected: 0,
+    anglesRejected: 0,
+    frameBoundsRejected: 0,
+    scored: 0,
+    duplicates: 0,
+    accepted: 0,
+  };
+}
 
 /** Approximates one contour at several tolerances until it becomes exactly four-sided. */
 function approximateQuadrilateral(contour: PointVector, perimeter: number): PointVector | null {
@@ -98,6 +134,7 @@ function collectQuadrilaterals(
   imageArea: number,
   source: CandidateSource,
   scored: ScoredQuadrilateral[],
+  diagnostics?: OpenCvDetectorDiagnostics,
 ): void {
   'worklet';
 
@@ -106,15 +143,24 @@ function collectQuadrilaterals(
     try {
       const { value: area } = OpenCV.contourArea(contour, false);
       const areaRatio = area / imageArea;
-      if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) continue;
+      if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) {
+        if (diagnostics != null) diagnostics.areaRejected += 1;
+        continue;
+      }
 
       const { value: perimeter } = OpenCV.arcLength(contour, true);
       const approx = approximateQuadrilateral(contour, perimeter);
-      if (approx === null) continue;
+      if (approx === null) {
+        if (diagnostics != null) diagnostics.notQuadrilateral += 1;
+        continue;
+      }
 
       try {
         const corners = readQuadrilateral(approx);
-        if (!isStableCardQuad(corners)) continue;
+        if (!isStableCardQuad(corners)) {
+          if (diagnostics != null) diagnostics.unstable += 1;
+          continue;
+        }
 
         const quadArea = polygonArea(corners);
         const quadPerimeter = edgeLengths(corners).reduce((sum, edge) => sum + edge, 0);
@@ -122,20 +168,33 @@ function collectQuadrilaterals(
         const perimeterExcess = perimeter / Math.max(quadPerimeter, 1);
         const { cardAspect, edgeSimilarity, angleCosine } = summarizeCardQuad(corners);
 
-        if (
-          contourQuadFill < MIN_CONTOUR_QUAD_FILL ||
-          contourQuadFill > MAX_CONTOUR_QUAD_FILL ||
-          perimeterExcess > MAX_PERIMETER_EXCESS ||
-          cardAspect < MIN_CARD_ASPECT ||
-          cardAspect > MAX_CARD_ASPECT ||
-          edgeSimilarity < MIN_OPPOSITE_EDGE_RATIO ||
-          angleCosine > MAX_ADJACENT_EDGE_COSINE
-        )
+        if (contourQuadFill < MIN_CONTOUR_QUAD_FILL || contourQuadFill > MAX_CONTOUR_QUAD_FILL) {
+          if (diagnostics != null) diagnostics.fillRejected += 1;
           continue;
+        }
+        if (perimeterExcess > MAX_PERIMETER_EXCESS) {
+          if (diagnostics != null) diagnostics.perimeterRejected += 1;
+          continue;
+        }
+        if (!passesCardAspectGate({ areaRatio, cardAspect, edgeSimilarity, angleCosine })) {
+          if (diagnostics != null) diagnostics.aspectRejected += 1;
+          continue;
+        }
+        if (edgeSimilarity < MIN_OPPOSITE_EDGE_RATIO) {
+          if (diagnostics != null) diagnostics.oppositeEdgesRejected += 1;
+          continue;
+        }
+        if (angleCosine > MAX_ADJACENT_EDGE_COSINE) {
+          if (diagnostics != null) diagnostics.anglesRejected += 1;
+          continue;
+        }
 
         const rect = OpenCV.boundingRect(approx);
         try {
-          if (rect.width >= imageWidth * 0.98 || rect.height >= imageHeight * 0.98) continue;
+          if (rect.width >= imageWidth * 0.98 || rect.height >= imageHeight * 0.98) {
+            if (diagnostics != null) diagnostics.frameBoundsRejected += 1;
+            continue;
+          }
           scored.push({
             corners,
             area,
@@ -153,6 +212,7 @@ function collectQuadrilaterals(
               angleCosine,
             ),
           });
+          if (diagnostics != null) diagnostics.scored += 1;
         } finally {
           rect.release();
         }
@@ -169,7 +229,10 @@ function collectQuadrilaterals(
  * Detects card-like contours and perspective-normalizes each accepted candidate from a BGR Mat.
  * The returned Mats are owned by the caller and must be released.
  */
-export function detectNormalizedCardCandidatesFromBgr(input: Mat): OpenCvCardCandidate[] {
+export function detectNormalizedCardCandidatesFromBgr(
+  input: Mat,
+  diagnostics?: OpenCvDetectorDiagnostics,
+): OpenCvCardCandidate[] {
   'worklet';
 
   const gray = Mat.create(0, 0, DataTypes.CV_8U);
@@ -192,6 +255,7 @@ export function detectNormalizedCardCandidatesFromBgr(input: Mat): OpenCvCardCan
       RetrievalModes.RETR_LIST,
       ContourApproximationModes.CHAIN_APPROX_SIMPLE,
     );
+    if (diagnostics != null) diagnostics.rawContours = rawContours.length;
 
     OpenCV.morphologyEx(edges, closedEdges, MorphTypes.MORPH_CLOSE, closeKernel);
     OpenCV.findContours(
@@ -200,11 +264,28 @@ export function detectNormalizedCardCandidatesFromBgr(input: Mat): OpenCvCardCan
       RetrievalModes.RETR_LIST,
       ContourApproximationModes.CHAIN_APPROX_SIMPLE,
     );
+    if (diagnostics != null) diagnostics.closedContours = closedContours.length;
 
     const imageArea = input.cols * input.rows;
     const scored: ScoredQuadrilateral[] = [];
-    collectQuadrilaterals(rawContours, input.cols, input.rows, imageArea, 'raw', scored);
-    collectQuadrilaterals(closedContours, input.cols, input.rows, imageArea, 'closed', scored);
+    collectQuadrilaterals(
+      rawContours,
+      input.cols,
+      input.rows,
+      imageArea,
+      'raw',
+      scored,
+      diagnostics,
+    );
+    collectQuadrilaterals(
+      closedContours,
+      input.cols,
+      input.rows,
+      imageArea,
+      'closed',
+      scored,
+      diagnostics,
+    );
 
     scored.sort((a, b) => {
       if (a.source !== b.source) return a.source === 'raw' ? -1 : 1;
@@ -216,8 +297,10 @@ export function detectNormalizedCardCandidatesFromBgr(input: Mat): OpenCvCardCan
     const accepted: ScoredQuadrilateral[] = [];
     for (const candidate of scored) {
       if (!overlapsAcceptedQuad(candidate, accepted)) accepted.push(candidate);
+      else if (diagnostics != null) diagnostics.duplicates += 1;
       if (accepted.length >= MAX_CANDIDATES) break;
     }
+    if (diagnostics != null) diagnostics.accepted = accepted.length;
 
     const normalizedCandidates: OpenCvCardCandidate[] = [];
     try {
