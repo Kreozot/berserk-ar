@@ -77,17 +77,32 @@ npm start
 
 VisionCamera/OpenCV являются native dependencies, поэтому обычного Expo Go недостаточно — нужен development/native build.
 
-### Live CV diagnostics
+### Режимы CV-разработки
 
-Debug-панель с временем detector/ORB, количеством кандидатов, ORB checks/skips,
-распознанных карт, tracker entries и scene resets запускается отдельно:
+Перед запуском любого режима остановите предыдущую Expo/Metro-сессию. Подключите Android-устройство
+с включённой USB-отладкой и используйте одну из команд:
 
 ```bash
+# Снять новые реальные кадры без React Native overlays в сохранённом JPEG
+npm run capture:android
+
+# Прогнать все fixtures/cv через detector + perspective normalization + ORB
+npm run android:cv-regression
+
+# Показать live timings и счётчики detector / ORB / tracker поверх камеры
 npm run diagnostics:android
 ```
 
-Панель требует development build и не включается в production даже при установленной переменной
-окружения.
+Все три режима требуют development build и явного флага, поэтому не включаются в production.
+Capture workflow подробно описан в [`fixtures/cv/CAPTURE.md`](fixtures/cv/CAPTURE.md), структура
+golden fixtures и интерпретация regression-результатов — в
+[`fixtures/cv/README.md`](fixtures/cv/README.md).
+
+Regression runner пишет строки с префиксом `[BerserkCVRegression]`, сохраняет полный отчёт в
+`cv-regression/latest.json`, а для упавших сцен создаёт annotated JPEGs в
+`cv-regression/diagnostics`. Live diagnostics показывает detector/ORB/total time, candidates,
+ORB checked/skipped, recognized, tracker count и scene resets; тот же snapshot логируется с
+префиксом `[BerserkCV]` каждые 10 обработанных кадров.
 
 ## Архитектура CV
 
