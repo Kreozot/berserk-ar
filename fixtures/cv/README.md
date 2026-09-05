@@ -32,6 +32,8 @@ fixtures/cv/
 
 Do not add synthetic photographs as substitutes for physical validation. A fixture should come from a real camera frame that reproduced useful behavior on-device.
 
+See [`CAPTURE.md`](./CAPTURE.md) for the Pixel 7 Pro debug capture command and export workflow.
+
 ## `expected.json`
 
 Corners use image-normalized coordinates, where `(0, 0)` is the top-left and `(1, 1)` is the bottom-right. This keeps expectations stable if the stored image is resized later.
