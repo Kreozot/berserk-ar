@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "category": "false-positives",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:09:20.140Z: two card backs and three reference aids, all hard negatives for recognition",
+  "expectations": []
+}

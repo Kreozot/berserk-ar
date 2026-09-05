@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "partial-overlap",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:08:17.241Z: Olgerd is fully visible over a heavily occluded Potion Seller; only Olgerd has a complete detectable quad",
+  "expectations": [
+    {
+      "label": "front-olgerd",
+      "cardId": "ll-014",
+      "corners": [
+        { "x": 0.351, "y": 0.308 },
+        { "x": 0.799, "y": 0.319 },
+        { "x": 0.762, "y": 0.602 },
+        { "x": 0.259, "y": 0.566 }
+      ]
+    }
+  ]
+}

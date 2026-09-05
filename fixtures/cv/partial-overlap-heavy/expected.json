@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "partial-overlap",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:08:34.787Z: Olgerd diagonally covers Potion Seller; the rear card has no complete contour and is not required",
+  "expectations": [
+    {
+      "label": "front-olgerd",
+      "cardId": "ll-014",
+      "corners": [
+        { "x": 0.314, "y": 0.239 },
+        { "x": 0.746, "y": 0.256 },
+        { "x": 0.649, "y": 0.536 },
+        { "x": 0.156, "y": 0.503 }
+      ]
+    }
+  ]
+}

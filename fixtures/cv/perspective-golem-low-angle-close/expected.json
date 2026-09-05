@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "perspective",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:05:25.937Z: closer low-angle Iron Golem with strong foreshortening",
+  "expectations": [
+    {
+      "label": "iron-golem",
+      "cardId": "ll-008",
+      "corners": [
+        { "x": 0.09, "y": 0.201 },
+        { "x": 0.658, "y": 0.201 },
+        { "x": 0.794, "y": 0.444 },
+        { "x": 0.012, "y": 0.445 }
+      ]
+    }
+  ]
+}

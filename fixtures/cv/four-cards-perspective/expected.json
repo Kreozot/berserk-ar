@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "category": "four-cards",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:07:08.526Z: four cards with uneven spacing and a strongly rotated lower-right card",
+  "expectations": [
+    {
+      "label": "top-left-toa-dana-guard",
+      "cardId": "ll-002",
+      "corners": [
+        { "x": 0.194, "y": 0.393 },
+        { "x": 0.473, "y": 0.392 },
+        { "x": 0.444, "y": 0.557 },
+        { "x": 0.114, "y": 0.547 }
+      ]
+    },
+    {
+      "label": "top-right-iron-golem",
+      "cardId": "ll-008",
+      "corners": [
+        { "x": 0.524, "y": 0.392 },
+        { "x": 0.812, "y": 0.392 },
+        { "x": 0.848, "y": 0.557 },
+        { "x": 0.531, "y": 0.56 }
+      ]
+    },
+    {
+      "label": "bottom-left-blade-slave",
+      "cardId": "ll-017",
+      "corners": [
+        { "x": 0.17, "y": 0.574 },
+        { "x": 0.453, "y": 0.574 },
+        { "x": 0.423, "y": 0.786 },
+        { "x": 0.069, "y": 0.776 }
+      ]
+    },
+    {
+      "label": "bottom-right-olgerd",
+      "cardId": "ll-014",
+      "corners": [
+        { "x": 0.602, "y": 0.568 },
+        { "x": 0.92, "y": 0.594 },
+        { "x": 0.789, "y": 0.821 },
+        { "x": 0.435, "y": 0.76 }
+      ]
+    }
+  ]
+}

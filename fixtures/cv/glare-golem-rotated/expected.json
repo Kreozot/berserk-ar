@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "category": "glare",
+  "description": "Pixel 7 Pro capture 2026-09-05T13:06:53.178Z: rotated Iron Golem with a broad reflection across its center",
+  "expectations": [
+    {
+      "label": "iron-golem-rotated-glare",
+      "cardId": "ll-008",
+      "corners": [
+        { "x": 0.09, "y": 0.447 },
+        { "x": 0.875, "y": 0.421 },
+        { "x": 0.896, "y": 0.677 },
+        { "x": 0.104, "y": 0.718 }
+      ]
+    }
+  ]
+}
