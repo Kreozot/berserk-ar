@@ -28,6 +28,7 @@ type SchedulerTrack = {
 };
 
 type SchedulerState = {
+  readonly sessionId: number;
   frameIndex: number;
   nextTrackId: number;
   tracks: SchedulerTrack[];
@@ -55,12 +56,13 @@ const MAX_MISSED_FRAMES = 4;
 const SCENE_FORCE_ORB_FRAMES = 2;
 
 /** Returns the persistent scheduler state stored inside the frame-output worklet runtime. */
-function getState(): SchedulerState {
+function getState(sessionId: number): SchedulerState {
   'worklet';
   const scope = globalThis as WorkletGlobal;
   const cached = scope.__berserkOrbSchedulerState;
-  if (cached != null) return cached;
+  if (cached?.sessionId === sessionId) return cached;
   const created: SchedulerState = {
+    sessionId,
     frameIndex: 0,
     nextTrackId: 1,
     tracks: [],
@@ -90,9 +92,10 @@ function skippedResult(
  */
 export function recognizeScheduledCardCandidatesWithOrb(
   candidates: readonly OpenCvCardCandidate[],
+  sessionId = 0,
 ): ScheduledRecognitionBatch {
   'worklet';
-  const state = getState();
+  const state = getState(sessionId);
   state.frameIndex += 1;
 
   if (candidates.length === 0) {

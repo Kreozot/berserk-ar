@@ -22,7 +22,8 @@ export function recognizeCardCandidatesWithOrb(
 /** Applies worklet-side scheduling and exposes the counts needed by frame diagnostics. */
 export function recognizeCardCandidatesWithOrbBatch(
   candidates: readonly OpenCvCardCandidate[],
+  sessionId: number,
 ): ScheduledRecognitionBatch {
   'worklet';
-  return recognizeScheduledCardCandidatesWithOrb(candidates);
+  return recognizeScheduledCardCandidatesWithOrb(candidates, sessionId);
 }

@@ -1,5 +1,14 @@
-import { memo, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, type AppStateStatus, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  memo,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Camera,
   type CameraRef,
@@ -10,7 +19,6 @@ import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { type CardDefinition, getCardById } from '../../catalog/cards';
-import { CardTracker } from '../../core/tracking/CardTracker';
 import {
   completeFrameDiagnostics,
   type FrameDiagnostics,
@@ -28,6 +36,7 @@ import {
   recognizeCardCandidatesWithOrbBatch,
 } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { CardModal } from '../card/CardModal';
+import { CameraRecognitionSession } from './CameraRecognitionSession';
 import { CvDiagnosticsPanel } from './CvDiagnosticsPanel';
 import { CvFixtureCaptureControls } from './CvFixtureCaptureControls';
 import { compactCvError, mapDetectorPointToPreview, type PreviewSize } from './cameraGeometry';
@@ -44,6 +53,8 @@ const CV_DIAGNOSTICS_ENABLED = isCvDiagnosticsEnabled(
   process.env.EXPO_PUBLIC_CV_DIAGNOSTICS,
 );
 
+const FRAME_TARGET_RESOLUTION = { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT };
+
 type ViewDetection = {
   readonly trackId: string;
   readonly corners: Quadrilateral;
@@ -59,13 +70,14 @@ type CvWorkletGlobal = typeof globalThis & {
 type CameraFeedProps = {
   readonly cameraRef: RefObject<CameraRef | null>;
   readonly diagnosticsEnabled: boolean;
-  readonly isActive: boolean;
+  readonly sessionId: number | null;
   readonly onDetections: (
+    sessionId: number,
     detections: RecognizedCardCandidate[],
     diagnostics: FrameProcessingDiagnostics | null,
   ) => void;
-  readonly onCvError: (message: string) => void;
-  readonly onCameraError: (message: string) => void;
+  readonly onCvError: (sessionId: number, message: string) => void;
+  readonly onCameraError: (sessionId: number, message: string) => void;
 };
 
 /**
@@ -75,7 +87,7 @@ type CameraFeedProps = {
 const CameraFeed = memo(function CameraFeed({
   cameraRef,
   diagnosticsEnabled,
-  isActive,
+  sessionId,
   onDetections,
   onCvError,
   onCameraError,
@@ -95,21 +107,21 @@ const CameraFeed = memo(function CameraFeed({
   }, []);
 
   useEffect(() => {
-    if (resizerError != null) {
-      onCvError(`RESIZER: ${String(resizerError)}`);
+    if (resizerError != null && sessionId !== null) {
+      onCvError(sessionId, `RESIZER: ${String(resizerError)}`);
     }
-  }, [onCvError, resizerError]);
+  }, [onCvError, resizerError, sessionId]);
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
-    targetResolution: { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT },
+    targetResolution: FRAME_TARGET_RESOLUTION,
     enablePreviewSizedOutputBuffers: true,
     enablePhysicalBufferRotation: false,
     dropFramesWhileBusy: true,
     onFrame(frame) {
       'worklet';
 
-      if (resizer == null) {
+      if (resizer == null || sessionId === null) {
         frame.dispose();
         return;
       }
@@ -121,7 +133,7 @@ const CameraFeed = memo(function CameraFeed({
         try {
           candidates = detectNormalizedCardCandidates(frame, resizer);
         } catch (error) {
-          scheduleOnRN(onCvError, compactCvError('DETECT/WARP', error));
+          scheduleOnRN(onCvError, sessionId, compactCvError('DETECT/WARP', error));
           return;
         }
 
@@ -130,7 +142,7 @@ const CameraFeed = memo(function CameraFeed({
         frameDisposed = true;
 
         try {
-          const recognitionBatch = recognizeCardCandidatesWithOrbBatch(candidates);
+          const recognitionBatch = recognizeCardCandidatesWithOrbBatch(candidates, sessionId);
           const finishedAt = Date.now();
 
           const scope = globalThis as CvWorkletGlobal;
@@ -148,9 +160,9 @@ const CameraFeed = memo(function CameraFeed({
                 sceneReset: recognitionBatch.sceneReset,
               }
             : null;
-          scheduleOnRN(onDetections, recognitionBatch.results, diagnostics);
+          scheduleOnRN(onDetections, sessionId, recognitionBatch.results, diagnostics);
         } catch (error) {
-          scheduleOnRN(onCvError, compactCvError('ORB', error));
+          scheduleOnRN(onCvError, sessionId, compactCvError('ORB', error));
         }
       } finally {
         for (const candidate of candidates) candidate.normalizedImage.release();
@@ -161,14 +173,16 @@ const CameraFeed = memo(function CameraFeed({
 
   const outputs = useMemo(() => [frameOutput], [frameOutput]);
   const handleCameraError = useCallback(
-    (error: { message: string }) => onCameraError(error.message),
-    [onCameraError],
+    (error: { message: string }) => {
+      if (sessionId !== null) onCameraError(sessionId, error.message);
+    },
+    [onCameraError, sessionId],
   );
 
   return (
     <Camera
       device="back"
-      isActive={isActive}
+      isActive={sessionId !== null}
       onError={handleCameraError}
       orientationSource="interface"
       outputs={outputs}
@@ -191,10 +205,38 @@ export function CameraScreen() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [frameDiagnostics, setFrameDiagnostics] = useState<FrameDiagnostics | null>(null);
   const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
-  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  // Preserve every lifecycle event, including a pause/resume batched into one React commit.
+  const [appState, setAppState] = useState(() => ({ status: AppState.currentState }));
   const cameraRef = useRef<CameraRef>(null);
-  const trackerRef = useRef<CardTracker | null>(null);
-  if (trackerRef.current === null) trackerRef.current = new CardTracker();
+  const [session] = useState(() => new CameraRecognitionSession());
+  const [sessionId, setSessionId] = useState<number | null>(null);
+
+  const stopSession = useCallback(() => {
+    session.deactivate();
+    setSessionId(null);
+    setDetections([]);
+    setFrameDiagnostics(null);
+    setCameraError(null);
+    setDetectorError(null);
+  }, [session]);
+
+  const selectCard = useCallback(
+    (card: CardDefinition) => {
+      // Invalidate queued callbacks immediately, before React commits the modal.
+      stopSession();
+      setSelectedCard(card);
+    },
+    [stopSession],
+  );
+
+  useLayoutEffect(() => {
+    if (hasPermission && appState.status === 'active' && selectedCard === null) {
+      setSessionId(session.activate());
+    } else {
+      stopSession();
+    }
+    return () => session.deactivate();
+  }, [appState, hasPermission, selectedCard, session, stopSession]);
 
   useEffect(() => {
     if (!hasPermission) void requestPermission();
@@ -202,40 +244,31 @@ export function CameraScreen() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      setAppState(nextState);
+      setAppState({ status: nextState });
       if (nextState !== 'active') {
-        trackerRef.current?.reset();
-        setDetections([]);
-        setFrameDiagnostics(null);
-        setCameraError(null);
+        stopSession();
       }
     });
     return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCard !== null) {
-      trackerRef.current?.reset();
-      setDetections([]);
-      setFrameDiagnostics(null);
-    }
-  }, [selectedCard]);
+  }, [stopSession]);
 
   const showDetections = useCallback(
     (
+      resultSessionId: number,
       cameraDetections: RecognizedCardCandidate[],
       processingDiagnostics: FrameProcessingDiagnostics | null,
     ) => {
-      if (previewSize === null || trackerRef.current === null) return;
+      if (previewSize === null) return;
 
-      const tracker = trackerRef.current;
-      const tracked = tracker.update(
+      const tracked = session.update(
+        resultSessionId,
         cameraDetections.map((detection) => ({
           corners: detection.detectorCorners,
           recognition: detection.recognition,
           evaluated: detection.evaluated,
         })),
       );
+      if (tracked === null) return;
 
       const viewDetections = tracked.map((track): ViewDetection => {
         const source = cameraDetections[track.observationIndex];
@@ -283,7 +316,7 @@ export function CameraScreen() {
         const diagnostics = completeFrameDiagnostics(
           processingDiagnostics,
           recognized,
-          tracker.trackCount,
+          session.trackCount,
         );
         setFrameDiagnostics(diagnostics);
         if (diagnostics.frameIndex % 10 === 0) {
@@ -298,19 +331,23 @@ export function CameraScreen() {
       }
       setDetectorError(null);
     },
-    [previewSize],
+    [previewSize, session],
   );
 
-  const showDetectorError = useCallback((message: string) => {
-    setDetectorError((current) => (current === message ? current : message));
-    setDetections((current) => (current.length === 0 ? current : []));
-  }, []);
+  const showDetectorError = useCallback(
+    (resultSessionId: number, message: string) => {
+      if (!session.accepts(resultSessionId)) return;
+      setDetectorError((current) => (current === message ? current : message));
+      setDetections((current) => (current.length === 0 ? current : []));
+    },
+    [session],
+  );
 
   const showCameraError = useCallback(
-    (message: string) => {
-      if (appState === 'active') setCameraError(message);
+    (resultSessionId: number, message: string) => {
+      if (session.accepts(resultSessionId)) setCameraError(message);
     },
-    [appState],
+    [session],
   );
 
   const captureFixtureFrame = useCallback(async () => {
@@ -344,7 +381,6 @@ export function CameraScreen() {
     );
   }
 
-  const isCameraActive = appState === 'active' && selectedCard === null;
   const visibleError = detectorError ?? cameraError;
   const recognizedCount = detections.filter(
     (detection) => detection.recognition.status === 'recognized',
@@ -363,7 +399,7 @@ export function CameraScreen() {
       <CameraFeed
         cameraRef={cameraRef}
         diagnosticsEnabled={CV_DIAGNOSTICS_ENABLED}
-        isActive={isCameraActive}
+        sessionId={sessionId}
         onCameraError={showCameraError}
         onCvError={showDetectorError}
         onDetections={showDetections}
@@ -387,7 +423,7 @@ export function CameraScreen() {
             confidence={detection.recognition.confidence}
             corners={detection.corners}
             diagnostics={detection.diagnostics}
-            onPress={setSelectedCard}
+            onPress={selectCard}
             retainedIdentity={detection.retainedIdentity}
             trackId={detection.trackId}
           />

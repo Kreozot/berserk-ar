@@ -12,6 +12,7 @@ export default defineConfig({
         'src/core/vision/geometry.ts',
         'src/core/vision/frameDiagnostics.ts',
         'src/features/camera/cameraGeometry.ts',
+        'src/features/camera/CameraRecognitionSession.ts',
         'src/features/camera/cvDiagnostics.ts',
         'src/features/camera/cvFixtureCapture.ts',
         'src/features/camera/overlayGeometry.ts',
