@@ -1,0 +1,12 @@
+diff --git a/node_modules/react-native-fast-opencv/cpp/structures/mat/MatDelegate.cpp b/node_modules/react-native-fast-opencv/cpp/structures/mat/MatDelegate.cpp
+--- a/node_modules/react-native-fast-opencv/cpp/structures/mat/MatDelegate.cpp
++++ b/node_modules/react-native-fast-opencv/cpp/structures/mat/MatDelegate.cpp
+@@ -156,7 +156,7 @@ std::vector<jsi::PropNameID> MatDelegate::getPropertyNames(jsi::Runtime& rt) {
+ 
+ size_t MatDelegate::getExternalMemorySize(const std::any& object) {
+   auto matPtr = std::any_cast<std::shared_ptr<cv::Mat>>(&object);
+-  if (matPtr == nullptr || *matPtr == nullptr) {
++  if (matPtr == nullptr || *matPtr == nullptr || (*matPtr)->empty()) {
+     return 0;
+   }
+   return (*matPtr)->total() * (*matPtr)->elemSize();

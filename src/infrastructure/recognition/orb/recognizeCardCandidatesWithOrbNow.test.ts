@@ -76,6 +76,22 @@ beforeEach(() => {
 });
 
 describe('ORB processing failures', () => {
+  it('returns evaluated UNKNOWN for an empty native descriptor matrix and releases its wrappers', () => {
+    const descriptors = mat(0, 0);
+    const keypoints = { release: vi.fn() };
+    vi.mocked(OpenCV.detectAndCompute).mockReturnValue({
+      keypoints,
+      descriptors,
+    } as unknown as ReturnType<typeof OpenCV.detectAndCompute>);
+    expect(recognizeCardCandidatesWithOrbNow([candidate()])[0]).toMatchObject({
+      evaluated: true,
+      recognition: { status: 'unknown', confidence: 0 },
+      diagnostics: { queryDescriptors: 0 },
+    });
+    expect(OpenCV.knnMatchBF).not.toHaveBeenCalled();
+    expect(descriptors.release).toHaveBeenCalledOnce();
+    expect(keypoints.release).toHaveBeenCalledOnce();
+  });
   it('rejects a fixture on a native error instead of reporting an ordinary detection/identity result', async () => {
     const detectorImage = {
       toRawPixelData: () => ({
