@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CV_FIXTURE_ASSETS } from './cvFixtureAssets';
 import { summarizeCvFixtureRun } from './cvFixtureRunSummary';
+import { finishCvRegressionReport } from './cvRegressionReport';
 import { type CvFixtureRunResult, runCvFixture } from './runCvFixture';
 
 type FixtureStatus =
@@ -41,6 +42,7 @@ export function CvRegressionScreen() {
   );
   const [isRunning, setIsRunning] = useState(false);
   const [reportUri, setReportUri] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const mounted = useRef(true);
   const hasAutoStarted = useRef(false);
 
@@ -55,6 +57,7 @@ export function CvRegressionScreen() {
     if (isRunning) return;
     setIsRunning(true);
     setReportUri(null);
+    setReportError(null);
     const next: FixtureStatus[] = CV_FIXTURE_ASSETS.map(({ name }) => ({
       name,
       state: 'pending',
@@ -79,13 +82,22 @@ export function CvRegressionScreen() {
       if (mounted.current) setStatuses([...next]);
     }
 
-    const uri = saveReport(next);
     const passed = next.filter(
       (status) => status.state === 'complete' && status.result.evaluation.passed,
     ).length;
-    console.log(`[BerserkCVRegression] COMPLETE · ${passed}/${next.length} passed · ${uri}`);
+    const report = finishCvRegressionReport(() => saveReport(next));
+    if (report.status === 'saved') {
+      console.log(
+        `[BerserkCVRegression] COMPLETE · ${passed}/${next.length} passed · ${report.uri}`,
+      );
+    } else {
+      console.error(
+        `[BerserkCVRegression] COMPLETE · ${passed}/${next.length} passed · REPORT ERROR · ${report.message}`,
+      );
+    }
     if (mounted.current) {
-      setReportUri(uri);
+      if (report.status === 'saved') setReportUri(report.uri);
+      else setReportError(report.message);
       setIsRunning(false);
     }
   }, [isRunning]);
@@ -106,8 +118,10 @@ export function CvRegressionScreen() {
       <Text style={styles.summary}>
         {isRunning ? 'RUNNING' : 'COMPLETE'} · {passed}/{statuses.length} PASS
       </Text>
-      <Text numberOfLines={2} style={styles.report}>
-        {reportUri ?? 'Report will be saved after the run.'}
+      <Text numberOfLines={2} style={[styles.report, reportError !== null && styles.reportError]}>
+        {reportError !== null
+          ? `Report error: ${reportError}`
+          : (reportUri ?? 'Report will be saved after the run.')}
       </Text>
       <Pressable disabled={isRunning} onPress={() => void runAll()} style={styles.button}>
         <Text style={styles.buttonText}>{isRunning ? 'Running…' : 'Run again'}</Text>
@@ -150,6 +164,7 @@ const styles = StyleSheet.create({
   title: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: 1.5 },
   summary: { marginTop: 8, color: '#ffffff', fontSize: 15, fontWeight: '700' },
   report: { marginTop: 6, color: '#999999', fontSize: 10 },
+  reportError: { color: '#ff6b6b' },
   button: {
     alignItems: 'center',
     marginTop: 14,
