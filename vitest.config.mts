@@ -25,6 +25,7 @@ export default defineConfig({
         'src/testing/cvFixtureRunSummary.ts',
         'src/testing/cvRegressionMode.ts',
         'src/testing/cvRegression.ts',
+        'src/testing/runCvFixture.ts',
       ],
       thresholds: {
         perFile: true,

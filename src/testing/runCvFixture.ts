@@ -46,11 +46,12 @@ function drawNormalizedQuad(
     const startCorner = corners[index];
     const endCorner = corners[(index + 1) % corners.length];
     const start = Point.create(startCorner.x * width, startCorner.y * height);
-    const end = Point.create(endCorner.x * width, endCorner.y * height);
+    let end: Point | undefined;
     try {
+      end = Point.create(endCorner.x * width, endCorner.y * height);
       OpenCV.line(image, start, end, color, 7, LineTypes.LINE_AA);
     } finally {
-      end.release();
+      end?.release();
       start.release();
     }
   }
@@ -69,9 +70,11 @@ function saveDiagnosticImage(
     raw.pixelFormat,
   );
   const image = Mat.createFromBuffer('uint8', raw.height, raw.width, 3, bgrBytes);
-  const expectedColor = Scalar.create(0, 220, 0, 255);
-  const observedColor = Scalar.create(0, 0, 255, 255);
+  let expectedColor: Scalar | undefined;
+  let observedColor: Scalar | undefined;
   try {
+    expectedColor = Scalar.create(0, 220, 0, 255);
+    observedColor = Scalar.create(0, 0, 255, 255);
     for (const expectation of fixture.manifest.expectations) {
       drawNormalizedQuad(image, expectation.corners, raw.width, raw.height, expectedColor);
     }
@@ -85,8 +88,8 @@ function saveDiagnosticImage(
     image.saveToFile(output.uri, 'jpeg', 0.92);
     return output.uri;
   } finally {
-    observedColor.release();
-    expectedColor.release();
+    observedColor?.release();
+    expectedColor?.release();
     image.release();
   }
 }
@@ -99,26 +102,28 @@ export async function runCvFixture(fixture: CvFixtureAsset): Promise<CvFixtureRu
   } catch (error) {
     throw new Error(missingCvFixtureAssetMessage(fixture.name, error));
   }
-  const source = { width: sourceImage.width, height: sourceImage.height };
-  const crop = centerCoverCrop(source, DETECTOR_SIZE);
-  const croppedImage = sourceImage.crop(
-    crop.left,
-    crop.top,
-    crop.left + crop.width,
-    crop.top + crop.height,
-  );
-  const detectorImage = croppedImage.resize(DETECTOR_WIDTH, DETECTOR_HEIGHT);
-  const raw = detectorImage.toRawPixelData();
-  const bgrBytes = rawPixelsToBgr(
-    new Uint8Array(raw.buffer),
-    raw.width,
-    raw.height,
-    raw.pixelFormat,
-  );
-  const bgr = Mat.createFromBuffer('uint8', DETECTOR_HEIGHT, DETECTOR_WIDTH, 3, bgrBytes);
-
+  let croppedImage: typeof sourceImage | undefined;
+  let detectorImage: typeof sourceImage | undefined;
+  let bgr: Mat | undefined;
   let candidates: ReturnType<typeof detectNormalizedCardCandidatesFromBgr> = [];
   try {
+    const source = { width: sourceImage.width, height: sourceImage.height };
+    const crop = centerCoverCrop(source, DETECTOR_SIZE);
+    croppedImage = sourceImage.crop(
+      crop.left,
+      crop.top,
+      crop.left + crop.width,
+      crop.top + crop.height,
+    );
+    detectorImage = croppedImage.resize(DETECTOR_WIDTH, DETECTOR_HEIGHT);
+    const raw = detectorImage.toRawPixelData();
+    const bgrBytes = rawPixelsToBgr(
+      new Uint8Array(raw.buffer),
+      raw.width,
+      raw.height,
+      raw.pixelFormat,
+    );
+    bgr = Mat.createFromBuffer('uint8', DETECTOR_HEIGHT, DETECTOR_WIDTH, 3, bgrBytes);
     const detectorDiagnostics = createOpenCvDetectorDiagnostics();
     const detectorStartedAt = Date.now();
     candidates = detectNormalizedCardCandidatesFromBgr(bgr, detectorDiagnostics);
@@ -153,9 +158,9 @@ export async function runCvFixture(fixture: CvFixtureAsset): Promise<CvFixtureRu
     };
   } finally {
     for (const candidate of candidates) candidate.normalizedImage.release();
-    bgr.release();
-    detectorImage.dispose();
-    croppedImage.dispose();
+    bgr?.release();
+    detectorImage?.dispose();
+    croppedImage?.dispose();
     sourceImage.dispose();
   }
 }
