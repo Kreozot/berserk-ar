@@ -7,11 +7,11 @@ describe('completeFrameDiagnostics', () => {
     const processing = {
       frameIndex: 20,
       detectorMs: 9,
-      orbMs: 14,
+      recognizerMs: 14,
       totalMs: 23,
       candidates: 6,
-      orbChecked: 2,
-      orbSkipped: 4,
+      recognitionChecked: 2,
+      recognitionSkipped: 4,
       sceneReset: true,
     };
 

@@ -110,20 +110,16 @@ ORB checked/skipped, recognized, tracker count и scene resets; тот же snap
 Camera Frame Output
    |
    v
-OpenCV shape detector
+CardRecognitionPipeline (core contract)
    |
-   v
-PerspectiveNormalizer
-   |
-   v
-CardRecognizer
-   |
-   +-- OrbCardRecognizer        (MVP)
-   +-- EmbeddingCardRecognizer  (возможная замена)
-   +-- ML recognizer            (возможная замена)
+   +-- OpenCvOrbFramePipeline   (MVP adapter)
+   +-- Embedding/ML pipeline    (возможная замена)
 ```
 
-Экран камеры не должен знать о feature descriptors, OpenCV matrices или ORB score.
+Выбор реализации находится в `cameraRecognitionPipeline.ts`; экран зависит только от этого
+composition root и core-контракта. Адаптер владеет промежуточными нативными изображениями и освобождает их до возврата результата.
+Экран камеры получает только координаты, `RecognitionResult`, нейтральную debug-сводку и тайминги;
+он не знает о feature descriptors, OpenCV matrices или ORB score.
 
 ## Источник тестовых изображений
 

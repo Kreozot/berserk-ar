@@ -1,15 +1,15 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { type CardDefinition, getCardById } from '../../catalog/cards';
+import type { RecognitionDebugInfo } from '../../core/vision/CardRecognitionPipeline';
 import type { Quadrilateral } from '../../core/vision/types';
-import type { OrbRecognitionDiagnostics } from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
 import { getOverlayLineGeometry } from './overlayGeometry';
 
 type Props = {
   card: CardDefinition | null;
   confidence: number;
   corners: Quadrilateral;
-  diagnostics: OrbRecognitionDiagnostics;
+  debug: RecognitionDebugInfo;
   onPress: (card: CardDefinition) => void;
   retainedIdentity: boolean;
   trackId: string;
@@ -42,7 +42,7 @@ export function DetectedCardOverlay({
   card,
   confidence,
   corners,
-  diagnostics,
+  debug,
   onPress,
   retainedIdentity,
   trackId,
@@ -56,21 +56,14 @@ export function DetectedCardOverlay({
   const confidencePercent = Math.round(confidence * 100);
   const isRecognized = card !== null;
   const accentColor = isRecognized ? RECOGNIZED_COLOR : UNKNOWN_COLOR;
-  const bestCandidate = diagnostics.bestCardId
-    ? (getCardById(diagnostics.bestCardId)?.nameRu ?? diagnostics.bestCardId)
+  const bestCandidate = debug.bestCandidateId
+    ? (getCardById(debug.bestCandidateId)?.nameRu ?? debug.bestCandidateId)
     : 'none';
   const sourceSuffix = retainedIdentity ? ' · TRACK' : '';
   const title = card
     ? `${card.nameRu} · ${confidencePercent}%${sourceSuffix}`
     : `UNKNOWN · best: ${bestCandidate}`;
-  const metrics = [
-    trackId,
-    `q=${diagnostics.queryDescriptors}`,
-    `m=${diagnostics.bestGoodMatches}/${diagnostics.secondBestGoodMatches}`,
-    `gm=${diagnostics.goodMatchRatio.toFixed(2)}`,
-    `Δ=${diagnostics.winnerMargin}`,
-    `wr=${diagnostics.winnerRatio.toFixed(2)}`,
-  ].join('  ');
+  const metrics = `${trackId}  ${debug.summary}`;
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>

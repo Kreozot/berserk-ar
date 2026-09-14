@@ -18,6 +18,7 @@ export default defineConfig({
         'src/features/camera/overlayGeometry.ts',
         'src/infrastructure/detection/opencv/cardQuadGeometry.ts',
         'src/infrastructure/detection/opencv/perspectiveGeometry.ts',
+        'src/infrastructure/recognition/OpenCvOrbFramePipeline.ts',
         'src/infrastructure/recognition/orb/orbScoring.ts',
         'src/infrastructure/recognition/orb/schedulerPolicy.ts',
         'src/testing/cvFixtureManifest.ts',

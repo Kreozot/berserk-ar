@@ -27,15 +27,12 @@ Use **React Native + VisionCamera + OpenCV + ORB** for the first prototype, behi
 UI / Camera screen
         |
         v
-RecognitionController
-        |
-        v
-CardRecognizer interface
+CardRecognitionPipeline interface
         |
         +----------------------+
         |                      |
         v                      v
-OrbCardRecognizer       Future recognizer
+OpenCvOrbFramePipeline  Future pipeline
 (OpenCV + ORB)          (embeddings / ML / etc.)
 ```
 
@@ -45,7 +42,7 @@ Card detection is also separated from card identification:
 Camera frame
     |
     v
-CardDetector
+detectNormalizedCardCandidates
     -> quadrilateral(s)
     |
     v
@@ -53,24 +50,25 @@ PerspectiveNormalizer
     -> normalized card image(s)
     |
     v
-CardRecognizer
+recognizeCardCandidatesWithOrbBatch
     -> cardId + confidence
 ```
 
-This allows us to replace either detection or identification independently.
+These are private stages of `OpenCvOrbFramePipeline`; they can evolve independently without
+becoming application contracts.
 
 ## Public contracts
 
-### CardRecognizer
+### CardRecognitionPipeline
 
-The rest of the app only knows this contract:
+The camera integration invokes one synchronous worklet-compatible processor:
 
 ```ts
-interface CardRecognizer {
-  prepare(catalog: CardReference[]): Promise<void>;
-  recognize(input: NormalizedCardImage): Promise<RecognitionResult>;
-  dispose(): Promise<void>;
-}
+type CardRecognitionPipeline<TFrame, TFrameAdapter> = (
+  frame: TFrame,
+  frameAdapter: TFrameAdapter,
+  sessionId: number,
+) => CardRecognitionFrameResult;
 ```
 
 The result must support an explicit unknown state. The UI must never infer a card simply because one candidate happens to score highest.
@@ -88,15 +86,9 @@ type RecognitionResult =
     };
 ```
 
-### CardDetector
-
-```ts
-interface CardDetector {
-  detect(frame: CameraFrame): Promise<DetectedCard[]>;
-}
-```
-
-A detected card contains its four corners in frame coordinates. It does not contain a Berserk card ID.
+`CardRecognitionFrameResult` contains plain observations, timings and scheduler counts. It contains
+no native handles. Detection and identification remain separate inside the adapter, where their
+intermediate images can be owned and released safely.
 
 ## First implementation
 
@@ -122,8 +114,8 @@ The first overlay can be implemented with regular React Native views. If profili
 
 ## Replaceability rules
 
-1. No OpenCV types may cross the adapter boundary into application/UI code.
-2. No ORB-specific score may be exposed as the public result; adapters normalize it to `confidence` in the range 0..1.
+1. No OpenCV types or intermediate image handles may cross the adapter boundary into application/UI code.
+2. No ORB-specific score type may be exposed as the public result; adapters normalize identity to `confidence` and optional diagnostics to plain display text.
 3. Catalog entries use stable project card IDs, not OpenCV descriptor IDs or array indexes.
 4. Reference preprocessing/caching belongs inside the recognizer implementation.
 5. The recognizer must return `unknown` when confidence is below its own configured threshold.
@@ -135,13 +127,14 @@ The first overlay can be implemented with regular React Native views. If profili
 A future implementation should be possible by adding, for example:
 
 ```text
-src/infrastructure/recognition/embedding/EmbeddingCardRecognizer
+src/infrastructure/recognition/EmbeddingFramePipeline
 ```
 
-implementing the same `CardRecognizer` contract and changing dependency wiring only:
+implementing the same `CardRecognitionPipeline` contract and changing only
+`cameraRecognitionPipeline.ts` dependency wiring:
 
 ```ts
-const recognizer: CardRecognizer = new EmbeddingCardRecognizer(...);
+const processFrame: CardRecognitionPipeline<Frame, ModelRunner> = processEmbeddingFrame;
 ```
 
 No camera screen, card detail screen, overlay component, or catalog format should need to change.
