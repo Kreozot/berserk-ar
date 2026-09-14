@@ -187,7 +187,15 @@ export function recognizeScheduledCardCandidatesWithOrb(
     }
   }
 
-  const actualResults = recognizeCardCandidatesWithOrbNow(selectedCandidates);
+  let actualResults: RecognizedCardCandidate[];
+  try {
+    actualResults = recognizeCardCandidatesWithOrbNow(selectedCandidates);
+  } catch (error) {
+    // Matching already mutated geometry/TTL state. Discard it so the next frame retries ORB
+    // instead of skipping a failed geometry-triggered recheck using a stale recognized cache.
+    delete (globalThis as WorkletGlobal).__berserkOrbSchedulerState;
+    throw error;
+  }
   const actualByCandidate = new Map<number, RecognizedCardCandidate>();
   for (let selectedIndex = 0; selectedIndex < selectedIndexes.length; selectedIndex += 1) {
     actualByCandidate.set(selectedIndexes[selectedIndex], actualResults[selectedIndex]);

@@ -14,6 +14,7 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "prepare": "husky",
+    "postinstall": "patch-package --error-on-fail",
     "typecheck": "tsc --noEmit",
     "check": "biome check src plugins index.ts vitest.config.mts",
     "check:staged": "biome check --staged --no-errors-on-unmatched",
@@ -22,10 +23,10 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "expo": "~57.0.20",
+    "expo": "~57.0.22",
     "expo-build-properties": "~57.0.17",
-    "expo-dev-client": "~57.0.18",
-    "expo-file-system": "~57.0.6",
+    "expo-dev-client": "~57.0.19",
+    "expo-file-system": "~57.0.7",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.3",
@@ -43,6 +44,7 @@
     "@vitest/coverage-v8": "4.1.11",
     "cross-env": "^10.1.0",
     "husky": "^9.1.7",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3",
     "vitest": "4.1.11"
   },

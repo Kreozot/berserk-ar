@@ -227,14 +227,17 @@ function recognizeOne(
   }
 }
 
-/** Immediately evaluates every supplied candidate with ORB, without scheduling/skipping. */
+/**
+ * Immediately evaluates every candidate. A native failure rejects the entire batch so callers
+ * report a processing error instead of feeding fabricated UNKNOWN votes into tracking/evaluation.
+ */
 export function recognizeCardCandidatesWithOrbNow(
   candidates: readonly OpenCvCardCandidate[],
 ): RecognizedCardCandidate[] {
   'worklet';
   if (candidates.length === 0) return [];
   const { orb, matcher, references } = getOrbRuntimeCache();
-  return candidates.map((candidate) => {
+  return candidates.map((candidate, index) => {
     try {
       const { recognition, diagnostics } = recognizeOne(
         candidate.normalizedImage,
@@ -248,13 +251,8 @@ export function recognizeCardCandidatesWithOrbNow(
         diagnostics,
         evaluated: true,
       };
-    } catch {
-      return {
-        detectorCorners: candidate.detectorCorners,
-        recognition: { status: 'unknown', confidence: 0 } as RecognitionResult,
-        diagnostics: emptyDiagnostics(),
-        evaluated: true,
-      };
+    } catch (error) {
+      throw new Error(`ORB candidate ${index + 1}/${candidates.length}: ${String(error)}`);
     }
   });
 }
