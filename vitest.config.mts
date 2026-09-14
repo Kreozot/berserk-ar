@@ -24,6 +24,7 @@ export default defineConfig({
         'src/testing/cvFixtureImage.ts',
         'src/testing/cvFixtureRunSummary.ts',
         'src/testing/cvRegressionMode.ts',
+        'src/testing/cvRegressionReport.ts',
         'src/testing/cvRegression.ts',
         'src/testing/runCvFixture.ts',
       ],
