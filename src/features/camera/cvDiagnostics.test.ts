@@ -17,18 +17,18 @@ describe('formatCvDiagnostics', () => {
       formatCvDiagnostics({
         frameIndex: 40,
         detectorMs: 8,
-        orbMs: 17,
+        recognizerMs: 17,
         totalMs: 25,
         candidates: 6,
-        orbChecked: 2,
-        orbSkipped: 4,
+        recognitionChecked: 2,
+        recognitionSkipped: 4,
         recognized: 3,
         trackerCount: 5,
         sceneReset: false,
       }),
     ).toEqual({
-      timing: 'FRAME 40 · DET 8ms · ORB 17ms · TOTAL 25ms',
-      pipeline: 'CAND 6 · ORB 2/4 · REC 3 · TRACK 5',
+      timing: 'FRAME 40 · DET 8ms · REC 17ms · TOTAL 25ms',
+      pipeline: 'CAND 6 · CHECK 2/4 · REC 3 · TRACK 5',
       scene: 'SCENE STABLE',
     });
   });
@@ -37,11 +37,11 @@ describe('formatCvDiagnostics', () => {
     const lines = formatCvDiagnostics({
       frameIndex: 1,
       detectorMs: 0,
-      orbMs: 0,
+      recognizerMs: 0,
       totalMs: 0,
       candidates: 0,
-      orbChecked: 0,
-      orbSkipped: 0,
+      recognitionChecked: 0,
+      recognitionSkipped: 0,
       recognized: 0,
       trackerCount: 0,
       sceneReset: true,

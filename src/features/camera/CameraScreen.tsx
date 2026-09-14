@@ -19,6 +19,10 @@ import { useResizer } from 'react-native-vision-camera-resizer';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { type CardDefinition, getCardById } from '../../catalog/cards';
+import type {
+  CardRecognitionObservation,
+  RecognitionDebugInfo,
+} from '../../core/vision/CardRecognitionPipeline';
 import {
   completeFrameDiagnostics,
   type FrameDiagnostics,
@@ -26,15 +30,11 @@ import {
 } from '../../core/vision/frameDiagnostics';
 import type { Quadrilateral, RecognitionResult } from '../../core/vision/types';
 import {
-  DETECTOR_HEIGHT,
-  DETECTOR_WIDTH,
-  detectNormalizedCardCandidates,
-} from '../../infrastructure/detection/opencv/detectCardQuadrilaterals';
-import {
-  type OrbRecognitionDiagnostics,
-  type RecognizedCardCandidate,
-  recognizeCardCandidatesWithOrbBatch,
-} from '../../infrastructure/recognition/orb/recognizeCardCandidatesWithOrb';
+  CAMERA_RECOGNITION_HEIGHT,
+  CAMERA_RECOGNITION_LABEL,
+  CAMERA_RECOGNITION_WIDTH,
+  processCameraRecognitionFrame,
+} from '../../infrastructure/recognition/cameraRecognitionPipeline';
 import { CardModal } from '../card/CardModal';
 import { CameraRecognitionSession } from './CameraRecognitionSession';
 import { CvDiagnosticsPanel } from './CvDiagnosticsPanel';
@@ -53,13 +53,16 @@ const CV_DIAGNOSTICS_ENABLED = isCvDiagnosticsEnabled(
   process.env.EXPO_PUBLIC_CV_DIAGNOSTICS,
 );
 
-const FRAME_TARGET_RESOLUTION = { width: DETECTOR_WIDTH, height: DETECTOR_HEIGHT };
+const FRAME_TARGET_RESOLUTION = {
+  width: CAMERA_RECOGNITION_WIDTH,
+  height: CAMERA_RECOGNITION_HEIGHT,
+};
 
 type ViewDetection = {
   readonly trackId: string;
   readonly corners: Quadrilateral;
   readonly recognition: RecognitionResult;
-  readonly diagnostics: OrbRecognitionDiagnostics;
+  readonly debug: RecognitionDebugInfo;
   readonly retainedIdentity: boolean;
 };
 
@@ -73,7 +76,7 @@ type CameraFeedProps = {
   readonly sessionId: number | null;
   readonly onDetections: (
     sessionId: number,
-    detections: RecognizedCardCandidate[],
+    detections: readonly CardRecognitionObservation[],
     diagnostics: FrameProcessingDiagnostics | null,
   ) => void;
   readonly onCvError: (sessionId: number, message: string) => void;
@@ -93,8 +96,8 @@ const CameraFeed = memo(function CameraFeed({
   onCameraError,
 }: CameraFeedProps) {
   const { resizer, error: resizerError } = useResizer({
-    width: DETECTOR_WIDTH,
-    height: DETECTOR_HEIGHT,
+    width: CAMERA_RECOGNITION_WIDTH,
+    height: CAMERA_RECOGNITION_HEIGHT,
     channelOrder: 'bgr',
     dataType: 'uint8',
     pixelLayout: 'interleaved',
@@ -126,47 +129,30 @@ const CameraFeed = memo(function CameraFeed({
         return;
       }
 
-      const startedAt = Date.now();
-      let candidates: ReturnType<typeof detectNormalizedCardCandidates> = [];
-      let frameDisposed = false;
       try {
         try {
-          candidates = detectNormalizedCardCandidates(frame, resizer);
-        } catch (error) {
-          scheduleOnRN(onCvError, sessionId, compactCvError('DETECT/WARP', error));
-          return;
-        }
-
-        const afterDetect = Date.now();
-        frame.dispose();
-        frameDisposed = true;
-
-        try {
-          const recognitionBatch = recognizeCardCandidatesWithOrbBatch(candidates, sessionId);
-          const finishedAt = Date.now();
-
+          const result = processCameraRecognitionFrame(frame, resizer, sessionId);
           const scope = globalThis as CvWorkletGlobal;
           const frameIndex = (scope.__berserkCvProcessedFrames ?? 0) + 1;
           scope.__berserkCvProcessedFrames = frameIndex;
           const diagnostics: FrameProcessingDiagnostics | null = diagnosticsEnabled
             ? {
                 frameIndex,
-                detectorMs: afterDetect - startedAt,
-                orbMs: finishedAt - afterDetect,
-                totalMs: finishedAt - startedAt,
-                candidates: candidates.length,
-                orbChecked: recognitionBatch.orbCandidates,
-                orbSkipped: candidates.length - recognitionBatch.orbCandidates,
-                sceneReset: recognitionBatch.sceneReset,
+                detectorMs: result.detectorMs,
+                recognizerMs: result.recognizerMs,
+                totalMs: result.detectorMs + result.recognizerMs,
+                candidates: result.observations.length,
+                recognitionChecked: result.evaluatedCandidates,
+                recognitionSkipped: result.skippedCandidates,
+                sceneReset: result.sceneReset,
               }
             : null;
-          scheduleOnRN(onDetections, sessionId, recognitionBatch.results, diagnostics);
+          scheduleOnRN(onDetections, sessionId, result.observations, diagnostics);
         } catch (error) {
-          scheduleOnRN(onCvError, sessionId, compactCvError('ORB', error));
+          scheduleOnRN(onCvError, sessionId, compactCvError('PIPELINE', error));
         }
       } finally {
-        for (const candidate of candidates) candidate.normalizedImage.release();
-        if (!frameDisposed) frame.dispose();
+        frame.dispose();
       }
     },
   });
@@ -255,7 +241,7 @@ export function CameraScreen() {
   const showDetections = useCallback(
     (
       resultSessionId: number,
-      cameraDetections: RecognizedCardCandidate[],
+      cameraDetections: readonly CardRecognitionObservation[],
       processingDiagnostics: FrameProcessingDiagnostics | null,
     ) => {
       if (previewSize === null) return;
@@ -263,7 +249,7 @@ export function CameraScreen() {
       const tracked = session.update(
         resultSessionId,
         cameraDetections.map((detection) => ({
-          corners: detection.detectorCorners,
+          corners: detection.corners,
           recognition: detection.recognition,
           evaluated: detection.evaluated,
         })),
@@ -278,30 +264,30 @@ export function CameraScreen() {
             mapDetectorPointToPreview(
               track.corners[0],
               previewSize,
-              DETECTOR_WIDTH,
-              DETECTOR_HEIGHT,
+              CAMERA_RECOGNITION_WIDTH,
+              CAMERA_RECOGNITION_HEIGHT,
             ),
             mapDetectorPointToPreview(
               track.corners[1],
               previewSize,
-              DETECTOR_WIDTH,
-              DETECTOR_HEIGHT,
+              CAMERA_RECOGNITION_WIDTH,
+              CAMERA_RECOGNITION_HEIGHT,
             ),
             mapDetectorPointToPreview(
               track.corners[2],
               previewSize,
-              DETECTOR_WIDTH,
-              DETECTOR_HEIGHT,
+              CAMERA_RECOGNITION_WIDTH,
+              CAMERA_RECOGNITION_HEIGHT,
             ),
             mapDetectorPointToPreview(
               track.corners[3],
               previewSize,
-              DETECTOR_WIDTH,
-              DETECTOR_HEIGHT,
+              CAMERA_RECOGNITION_WIDTH,
+              CAMERA_RECOGNITION_HEIGHT,
             ),
           ],
           recognition: track.recognition,
-          diagnostics: source.diagnostics,
+          debug: source.debug,
           retainedIdentity: track.retainedIdentity,
         };
       });
@@ -322,10 +308,10 @@ export function CameraScreen() {
         if (diagnostics.frameIndex % 10 === 0) {
           console.log(
             `[BerserkCV] frame=${diagnostics.frameIndex} candidates=${diagnostics.candidates} ` +
-              `orbChecked=${diagnostics.orbChecked} orbSkipped=${diagnostics.orbSkipped} ` +
+              `checked=${diagnostics.recognitionChecked} skipped=${diagnostics.recognitionSkipped} ` +
               `recognized=${diagnostics.recognized} tracker=${diagnostics.trackerCount} ` +
               `sceneReset=${diagnostics.sceneReset} detect=${diagnostics.detectorMs}ms ` +
-              `orb=${diagnostics.orbMs}ms total=${diagnostics.totalMs}ms`,
+              `recognizer=${diagnostics.recognizerMs}ms total=${diagnostics.totalMs}ms`,
           );
         }
       }
@@ -422,7 +408,7 @@ export function CameraScreen() {
             card={card}
             confidence={detection.recognition.confidence}
             corners={detection.corners}
-            diagnostics={detection.diagnostics}
+            debug={detection.debug}
             onPress={selectCard}
             retainedIdentity={detection.retainedIdentity}
             trackId={detection.trackId}
@@ -435,10 +421,10 @@ export function CameraScreen() {
         style={[styles.debugBadge, CV_DIAGNOSTICS_ENABLED && styles.debugBadgeWithPanel]}
       >
         <Text style={styles.debugText}>
-          OPENCV + ORB + TRACK · {recognizedCount}/{detections.length}
+          {CAMERA_RECOGNITION_LABEL} · {recognizedCount}/{detections.length}
         </Text>
         <Text style={styles.debugSubtext}>
-          CV {DETECTOR_WIDTH}×{DETECTOR_HEIGHT} · SINGLE SRC
+          CV {CAMERA_RECOGNITION_WIDTH}×{CAMERA_RECOGNITION_HEIGHT} · SINGLE SRC
         </Text>
       </View>
 

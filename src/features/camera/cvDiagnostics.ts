@@ -16,10 +16,10 @@ export function formatCvDiagnostics(diagnostics: FrameDiagnostics): CvDiagnostic
   return {
     timing:
       `FRAME ${diagnostics.frameIndex} · DET ${diagnostics.detectorMs}ms · ` +
-      `ORB ${diagnostics.orbMs}ms · TOTAL ${diagnostics.totalMs}ms`,
+      `REC ${diagnostics.recognizerMs}ms · TOTAL ${diagnostics.totalMs}ms`,
     pipeline:
-      `CAND ${diagnostics.candidates} · ORB ${diagnostics.orbChecked}/` +
-      `${diagnostics.orbSkipped} · REC ${diagnostics.recognized} · ` +
+      `CAND ${diagnostics.candidates} · CHECK ${diagnostics.recognitionChecked}/` +
+      `${diagnostics.recognitionSkipped} · REC ${diagnostics.recognized} · ` +
       `TRACK ${diagnostics.trackerCount}`,
     scene: diagnostics.sceneReset ? 'SCENE RESET' : 'SCENE STABLE',
   };

@@ -1,11 +1,11 @@
 export type FrameProcessingDiagnostics = {
   readonly frameIndex: number;
   readonly detectorMs: number;
-  readonly orbMs: number;
+  readonly recognizerMs: number;
   readonly totalMs: number;
   readonly candidates: number;
-  readonly orbChecked: number;
-  readonly orbSkipped: number;
+  readonly recognitionChecked: number;
+  readonly recognitionSkipped: number;
   readonly sceneReset: boolean;
 };
 
