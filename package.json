@@ -9,6 +9,10 @@
     "diagnostics:android": "cross-env EXPO_PUBLIC_CV_DIAGNOSTICS=1 expo run:android --device",
     "preandroid:cv-regression": "expo prebuild --platform android --no-install",
     "android:cv-regression": "cross-env EXPO_PUBLIC_CV_REGRESSION=1 expo run:android --device",
+    "recognition:test:device": "node scripts/run-device-recognition-tests.mjs",
+    "recognition:compare": "node scripts/compare-recognition-results.mjs",
+    "recognition:update-baseline": "node scripts/update-recognition-baseline.mjs",
+    "recognition:test": "npm run recognition:test:device && npm run recognition:compare",
     "android": "expo run:android",
     "android:device": "expo run:android --device",
     "ios": "expo run:ios",
@@ -23,8 +27,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "expo": "~57.0.22",
-    "expo-build-properties": "~57.0.17",
+    "expo": "~57.0.24",
+    "expo-build-properties": "~57.0.21",
     "expo-dev-client": "~57.0.19",
     "expo-file-system": "~57.0.7",
     "expo-status-bar": "~57.0.1",

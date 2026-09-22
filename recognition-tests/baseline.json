@@ -1,0 +1,626 @@
+{
+  "schemaVersion": 1,
+  "summary": {
+    "total": 17,
+    "passed": 5,
+    "failed": 12,
+    "missed": 18,
+    "wrongIdentity": 0,
+    "unexpected": 15
+  },
+  "cases": [
+    {
+      "id": "crowded-board-eight",
+      "category": "crowded-board",
+      "passed": false,
+      "expected": [
+        {
+          "label": "top-1-child-of-blizzard",
+          "cardId": "ll-009"
+        },
+        {
+          "label": "top-2-firemane",
+          "cardId": "ll-001"
+        },
+        {
+          "label": "top-3-chronicler",
+          "cardId": "ll-019"
+        },
+        {
+          "label": "top-4-orc-archer",
+          "cardId": "ll-004"
+        },
+        {
+          "label": "bottom-1-tsvar",
+          "cardId": "ll-010"
+        },
+        {
+          "label": "bottom-2-potion-seller",
+          "cardId": "ll-011"
+        },
+        {
+          "label": "bottom-3-gnome-archer",
+          "cardId": "ll-006"
+        },
+        {
+          "label": "bottom-4-troll-warrior",
+          "cardId": "ll-018"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-018"
+        },
+        {
+          "cardId": "ll-009"
+        },
+        {
+          "cardId": "ll-004"
+        },
+        {
+          "cardId": "ll-001"
+        },
+        {
+          "cardId": "ll-019"
+        },
+        {
+          "cardId": null
+        },
+        {
+          "cardId": "ll-006"
+        },
+        {
+          "cardId": null
+        }
+      ],
+      "missed": ["bottom-1-tsvar", "bottom-2-potion-seller"],
+      "wrongIdentity": [],
+      "unexpected": 2,
+      "detectorMs": 42,
+      "orbMs": 417
+    },
+    {
+      "id": "crowded-board-eleven",
+      "category": "crowded-board",
+      "passed": false,
+      "expected": [
+        {
+          "label": "column-3-child-of-blizzard",
+          "cardId": "ll-009"
+        },
+        {
+          "label": "column-3-firemane",
+          "cardId": "ll-001"
+        },
+        {
+          "label": "column-3-chronicler",
+          "cardId": "ll-019"
+        },
+        {
+          "label": "column-3-orc-archer",
+          "cardId": "ll-004"
+        },
+        {
+          "label": "column-2-tsvar",
+          "cardId": "ll-010"
+        },
+        {
+          "label": "column-2-potion-seller",
+          "cardId": "ll-011"
+        },
+        {
+          "label": "column-2-gnome-archer",
+          "cardId": "ll-006"
+        },
+        {
+          "label": "column-2-troll-warrior",
+          "cardId": "ll-018"
+        },
+        {
+          "label": "column-1-blade-slave",
+          "cardId": "ll-017"
+        },
+        {
+          "label": "column-1-toa-dana-guard",
+          "cardId": "ll-002"
+        },
+        {
+          "label": "column-1-olgerd",
+          "cardId": "ll-014"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-014"
+        },
+        {
+          "cardId": "ll-018"
+        },
+        {
+          "cardId": "ll-009"
+        },
+        {
+          "cardId": "ll-001"
+        },
+        {
+          "cardId": "ll-004"
+        },
+        {
+          "cardId": "ll-019"
+        },
+        {
+          "cardId": "ll-002"
+        },
+        {
+          "cardId": null
+        },
+        {
+          "cardId": "ll-006"
+        },
+        {
+          "cardId": null
+        },
+        {
+          "cardId": null
+        }
+      ],
+      "missed": ["column-2-tsvar", "column-2-potion-seller", "column-1-blade-slave"],
+      "wrongIdentity": [],
+      "unexpected": 3,
+      "detectorMs": 24,
+      "orbMs": 465
+    },
+    {
+      "id": "crowded-board-thirteen",
+      "category": "crowded-board",
+      "passed": false,
+      "expected": [
+        {
+          "label": "column-3-storm-mage",
+          "cardId": "ll-007"
+        },
+        {
+          "label": "column-3-child-of-blizzard",
+          "cardId": "ll-009"
+        },
+        {
+          "label": "column-3-firemane",
+          "cardId": "ll-001"
+        },
+        {
+          "label": "column-3-chronicler",
+          "cardId": "ll-019"
+        },
+        {
+          "label": "column-3-orc-archer",
+          "cardId": "ll-004"
+        },
+        {
+          "label": "column-2-orc-bully",
+          "cardId": "ll-005"
+        },
+        {
+          "label": "column-2-tsvar",
+          "cardId": "ll-010"
+        },
+        {
+          "label": "column-2-potion-seller",
+          "cardId": "ll-011"
+        },
+        {
+          "label": "column-2-gnome-archer",
+          "cardId": "ll-006"
+        },
+        {
+          "label": "column-2-troll-warrior",
+          "cardId": "ll-018"
+        },
+        {
+          "label": "column-1-blade-slave",
+          "cardId": "ll-017"
+        },
+        {
+          "label": "column-1-toa-dana-guard",
+          "cardId": "ll-002"
+        },
+        {
+          "label": "column-1-olgerd",
+          "cardId": "ll-014"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-014"
+        },
+        {
+          "cardId": "ll-017"
+        },
+        {
+          "cardId": "ll-018"
+        },
+        {
+          "cardId": "ll-001"
+        },
+        {
+          "cardId": "ll-019"
+        },
+        {
+          "cardId": "ll-009"
+        },
+        {
+          "cardId": "ll-004"
+        },
+        {
+          "cardId": "ll-002"
+        },
+        {
+          "cardId": null
+        },
+        {
+          "cardId": "ll-006"
+        },
+        {
+          "cardId": null
+        },
+        {
+          "cardId": null
+        }
+      ],
+      "missed": [
+        "column-3-storm-mage",
+        "column-2-orc-bully",
+        "column-2-tsvar",
+        "column-2-potion-seller"
+      ],
+      "wrongIdentity": [],
+      "unexpected": 3,
+      "detectorMs": 25,
+      "orbMs": 519
+    },
+    {
+      "id": "false-positives-aid-backs",
+      "category": "false-positives",
+      "passed": false,
+      "expected": [],
+      "actual": [
+        {
+          "cardId": null
+        },
+        {
+          "cardId": null
+        },
+        {
+          "cardId": null
+        }
+      ],
+      "missed": [],
+      "wrongIdentity": [],
+      "unexpected": 3,
+      "detectorMs": 23,
+      "orbMs": 172
+    },
+    {
+      "id": "false-positives-aid-fronts",
+      "category": "false-positives",
+      "passed": false,
+      "expected": [],
+      "actual": [
+        {
+          "cardId": null
+        }
+      ],
+      "missed": [],
+      "wrongIdentity": [],
+      "unexpected": 1,
+      "detectorMs": 6,
+      "orbMs": 53
+    },
+    {
+      "id": "four-cards-grid",
+      "category": "four-cards",
+      "passed": true,
+      "expected": [
+        {
+          "label": "top-left-gnome-archer",
+          "cardId": "ll-006"
+        },
+        {
+          "label": "top-right-tsvar",
+          "cardId": "ll-010"
+        },
+        {
+          "label": "bottom-left-blade-slave",
+          "cardId": "ll-017"
+        },
+        {
+          "label": "bottom-right-potion-seller",
+          "cardId": "ll-011"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-011"
+        },
+        {
+          "cardId": "ll-017"
+        },
+        {
+          "cardId": "ll-010"
+        },
+        {
+          "cardId": "ll-006"
+        }
+      ],
+      "missed": [],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 16,
+      "orbMs": 207
+    },
+    {
+      "id": "four-cards-perspective",
+      "category": "four-cards",
+      "passed": false,
+      "expected": [
+        {
+          "label": "top-left-toa-dana-guard",
+          "cardId": "ll-002"
+        },
+        {
+          "label": "top-right-iron-golem",
+          "cardId": "ll-008"
+        },
+        {
+          "label": "bottom-left-blade-slave",
+          "cardId": "ll-017"
+        },
+        {
+          "label": "bottom-right-olgerd",
+          "cardId": "ll-014"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-017"
+        },
+        {
+          "cardId": "ll-002"
+        },
+        {
+          "cardId": null
+        }
+      ],
+      "missed": ["top-right-iron-golem", "bottom-right-olgerd"],
+      "wrongIdentity": [],
+      "unexpected": 1,
+      "detectorMs": 9,
+      "orbMs": 102
+    },
+    {
+      "id": "four-cards-rotated",
+      "category": "four-cards",
+      "passed": true,
+      "expected": [
+        {
+          "label": "top-left-gnome-archer",
+          "cardId": "ll-006"
+        },
+        {
+          "label": "top-right-tsvar",
+          "cardId": "ll-010"
+        },
+        {
+          "label": "bottom-left-blade-slave",
+          "cardId": "ll-017"
+        },
+        {
+          "label": "bottom-right-potion-seller",
+          "cardId": "ll-011"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-011"
+        },
+        {
+          "cardId": "ll-017"
+        },
+        {
+          "cardId": "ll-010"
+        },
+        {
+          "cardId": "ll-006"
+        }
+      ],
+      "missed": [],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 15,
+      "orbMs": 207
+    },
+    {
+      "id": "glare-golem-front",
+      "category": "glare",
+      "passed": false,
+      "expected": [
+        {
+          "label": "iron-golem-glare",
+          "cardId": "ll-008"
+        }
+      ],
+      "actual": [],
+      "missed": ["iron-golem-glare"],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 4,
+      "orbMs": 0
+    },
+    {
+      "id": "glare-golem-rotated",
+      "category": "glare",
+      "passed": true,
+      "expected": [
+        {
+          "label": "iron-golem-rotated-glare",
+          "cardId": "ll-008"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-008"
+        }
+      ],
+      "missed": [],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 6,
+      "orbMs": 53
+    },
+    {
+      "id": "partial-overlap-heavy",
+      "category": "partial-overlap",
+      "passed": false,
+      "expected": [
+        {
+          "label": "front-olgerd",
+          "cardId": "ll-014"
+        }
+      ],
+      "actual": [],
+      "missed": ["front-olgerd"],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 5,
+      "orbMs": 0
+    },
+    {
+      "id": "partial-overlap-light",
+      "category": "partial-overlap",
+      "passed": true,
+      "expected": [
+        {
+          "label": "front-olgerd",
+          "cardId": "ll-014"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-014"
+        }
+      ],
+      "missed": [],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 8,
+      "orbMs": 55
+    },
+    {
+      "id": "perspective-gnome-quarter-turn",
+      "category": "perspective",
+      "passed": false,
+      "expected": [
+        {
+          "label": "gnome-archer-rotated",
+          "cardId": "ll-006"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": null
+        }
+      ],
+      "missed": ["gnome-archer-rotated"],
+      "wrongIdentity": [],
+      "unexpected": 1,
+      "detectorMs": 6,
+      "orbMs": 1
+    },
+    {
+      "id": "perspective-golem-low-angle-close",
+      "category": "perspective",
+      "passed": false,
+      "expected": [
+        {
+          "label": "iron-golem",
+          "cardId": "ll-008"
+        }
+      ],
+      "actual": [],
+      "missed": ["iron-golem"],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 6,
+      "orbMs": 0
+    },
+    {
+      "id": "perspective-golem-low-angle-wide",
+      "category": "perspective",
+      "passed": false,
+      "expected": [
+        {
+          "label": "iron-golem",
+          "cardId": "ll-008"
+        }
+      ],
+      "actual": [],
+      "missed": ["iron-golem"],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 4,
+      "orbMs": 0
+    },
+    {
+      "id": "perspective-three-cards",
+      "category": "perspective",
+      "passed": false,
+      "expected": [
+        {
+          "label": "top-left-toa-dana-guard",
+          "cardId": "ll-002"
+        },
+        {
+          "label": "top-right-olgerd",
+          "cardId": "ll-014"
+        },
+        {
+          "label": "bottom-left-iron-golem",
+          "cardId": "ll-008"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": null
+        },
+        {
+          "cardId": "ll-014"
+        }
+      ],
+      "missed": ["top-left-toa-dana-guard", "bottom-left-iron-golem"],
+      "wrongIdentity": [],
+      "unexpected": 1,
+      "detectorMs": 26,
+      "orbMs": 72
+    },
+    {
+      "id": "single-card-gnome-front",
+      "category": "single-card",
+      "passed": true,
+      "expected": [
+        {
+          "label": "gnome-archer",
+          "cardId": "ll-006"
+        }
+      ],
+      "actual": [
+        {
+          "cardId": "ll-006"
+        }
+      ],
+      "missed": [],
+      "wrongIdentity": [],
+      "unexpected": 0,
+      "detectorMs": 7,
+      "orbMs": 57
+    }
+  ]
+}

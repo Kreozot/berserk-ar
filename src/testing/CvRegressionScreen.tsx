@@ -5,12 +5,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CV_FIXTURE_ASSETS } from './cvFixtureAssets';
 import { summarizeCvFixtureRun } from './cvFixtureRunSummary';
 import { finishCvRegressionReport } from './cvRegressionReport';
-import { type CvFixtureRunResult, runCvFixture } from './runCvFixture';
-
-type FixtureStatus =
-  | { readonly name: string; readonly state: 'pending' | 'running' }
-  | { readonly name: string; readonly state: 'complete'; readonly result: CvFixtureRunResult }
-  | { readonly name: string; readonly state: 'error'; readonly message: string };
+import {
+  collectRecognitionTestReport,
+  emitRecognitionTestReport,
+  type FixtureStatus,
+} from './recognitionTestReport';
+import { runCvFixture } from './runCvFixture';
 
 function readableError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -86,6 +86,7 @@ export function CvRegressionScreen() {
       (status) => status.state === 'complete' && status.result.evaluation.passed,
     ).length;
     const report = finishCvRegressionReport(() => saveReport(next));
+    emitRecognitionTestReport(collectRecognitionTestReport(next));
     if (report.status === 'saved') {
       console.log(
         `[BerserkCVRegression] COMPLETE · ${passed}/${next.length} passed · ${report.uri}`,

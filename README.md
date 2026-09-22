@@ -104,6 +104,32 @@ Regression runner пишет строки с префиксом `[BerserkCVRegre
 ORB checked/skipped, recognized, tracker count и scene resets; тот же snapshot логируется с
 префиксом `[BerserkCV]` каждые 10 обработанных кадров.
 
+### Regression workflow с компьютера
+
+Нужны Node.js 22.13+, `adb` в PATH, одно Android-устройство с USB debugging и установленный
+debug build с актуальными fixture JPEG. После изменения fixtures или native-кода сначала выполните
+`npm run android:cv-regression` для пересборки APK. Остановите другие Metro-сессии перед прогоном.
+
+```bash
+npm run recognition:test:device
+npm run recognition:compare
+# Когда новый результат намеренно становится эталоном:
+npm run recognition:update-baseline
+```
+
+Первая команда поднимает Metro в regression-режиме, запускает установленное приложение через
+`adb`, собирает короткие фрагменты JSON из Android logcat и записывает
+`recognition-tests/results/latest.json`. Устройство не обращается к Git. В отчёте есть стабильные
+ID сцен, expected/actual card IDs, ошибки matching и измеренные detector/ORB времена. Время
+не участвует в решении о regression: оно зависит от нагрузки устройства. `latest.json` остаётся
+локальным артефактом. `recognition-tests/baseline.json` хранится в Git и содержит первый
+результат реального прогона 17 сцен. После `recognition:update-baseline` проверьте diff перед
+коммитом baseline.
+
+`recognition:compare` завершится с ненулевым кодом при новых failing cases или удалённых сценах.
+Новые сцены и изменения observations выводятся отдельно. Также есть последовательная команда
+`npm run recognition:test`.
+
 ## Архитектура CV
 
 ```text
