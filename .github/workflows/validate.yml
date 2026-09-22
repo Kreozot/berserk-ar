@@ -52,12 +52,25 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
       - name: Install dependencies
-        run: npm ci
+        run: |
+          start=$(date +%s)
+          trap 'echo "- npm ci: $(($(date +%s) - start)) s" >> "$GITHUB_STEP_SUMMARY"' EXIT
+          npm ci
 
       - name: Generate Android project
-        run: npx expo prebuild --platform android --no-install
+        run: |
+          start=$(date +%s)
+          trap 'echo "- Expo prebuild: $(($(date +%s) - start)) s" >> "$GITHUB_STEP_SUMMARY"' EXIT
+          npx expo prebuild --platform android --no-install
 
       - name: Compile Android debug app
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon -x lint -x test -PreactNativeArchitectures=arm64-v8a
+        run: |
+          start=$(date +%s)
+          trap 'echo "- Gradle assembleDebug: $(($(date +%s) - start)) s" >> "$GITHUB_STEP_SUMMARY"' EXIT
+          ./gradlew assembleDebug --no-daemon --build-cache -x lint -x test -PreactNativeArchitectures=arm64-v8a

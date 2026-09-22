@@ -15,7 +15,8 @@
 - `src/catalog/cards.ts` — статические React Native asset bindings;
 - `docs/development-plan.md` — этапы разработки;
 - `docs/technical-options.md` — рассмотренные варианты технической реализации;
-- `docs/adr/0001-card-recognition-architecture.md` — принятое архитектурное решение.
+- `docs/adr/0001-card-recognition-architecture.md` — принятое архитектурное решение;
+- `docs/decisions.md` — журнал технологических и продуктовых решений и шаблон новых ADR.
 
 ## Текущий стек MVP
 
