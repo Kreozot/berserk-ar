@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { expect, test } from 'vitest';
 import { compareReports, formatComparison, parseTransport } from './recognition-report.mjs';
 
 const item = (id, passed = true, actual = 'll-001') => ({
@@ -32,7 +31,7 @@ test('identical cases ignore timestamp and timing', () => {
     report([item('a')]),
     report([{ ...item('a'), detectorMs: 99 }], 'tomorrow'),
   );
-  assert.deepEqual(result, {
+  expect(result).toEqual({
     regressions: [],
     improvements: [],
     changed: [],
@@ -45,14 +44,16 @@ test('classifies regression, improvement, added and removed cases', () => {
     report([item('a'), item('b', false), item('old')]),
     report([item('a', false, 'll-002'), item('b'), item('new')]),
   );
-  assert.deepEqual(result.regressions, ['a']);
-  assert.deepEqual(result.improvements, ['b']);
-  assert.deepEqual(result.added, ['new']);
-  assert.deepEqual(result.removed, ['old']);
-  assert.match(formatComparison(report([item('a')]), report([item('a', false)])), /failed: 0 -> 1/);
+  expect(result.regressions).toEqual(['a']);
+  expect(result.improvements).toEqual(['b']);
+  expect(result.added).toEqual(['new']);
+  expect(result.removed).toEqual(['old']);
+  expect(formatComparison(report([item('a')]), report([item('a', false)]))).toMatch(
+    /failed: 0 -> 1/,
+  );
 });
 test('reassembles framed device output', () => {
   const json = JSON.stringify(report([item('a')]));
   const log = `[BerserkCVReport] BEGIN id 2\n[BerserkCVReport] CHUNK id 0 ${json.slice(0, 50)}\n[BerserkCVReport] CHUNK id 1 ${json.slice(50)}\n[BerserkCVReport] END id`;
-  assert.deepEqual(parseTransport(log), report([item('a')]));
+  expect(parseTransport(log)).toEqual(report([item('a')]));
 });
