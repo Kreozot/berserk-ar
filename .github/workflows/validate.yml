@@ -52,10 +52,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-
       - name: Install dependencies
         run: |
           start=$(date +%s)
@@ -67,6 +63,11 @@ jobs:
           start=$(date +%s)
           trap 'echo "- Expo prebuild: $(($(date +%s) - start)) s" >> "$GITHUB_STEP_SUMMARY"' EXIT
           npx expo prebuild --platform android --no-install
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: false
 
       - name: Compile Android debug app
         working-directory: android

@@ -10,7 +10,7 @@ Android job в GitHub Actions занимает более 10 минут. npm-к�
 
 ## Решение
 
-Использовать `gradle/actions/setup-gradle` с базовым кешем Gradle User Home и запускать `assembleDebug` с `--build-cache`. Сохранять длительность `npm ci`, `expo prebuild` и `assembleDebug` в summary Android job. Не кешировать целиком `node_modules` и генерируемую папку `android/`: они создаются из lockfile и конфигурации Expo, а полный кеш усложнил бы проверку актуальности.
+Использовать `gradle/actions/setup-gradle` после `expo prebuild` (Gradle-файлы отсутствуют до генерации Android-проекта) с базовым кешем Gradle User Home и запускать `assembleDebug` с `--build-cache`. Разрешить запись кеша также из PR, чтобы сравнить два прогона до слияния. Сохранять длительность `npm ci`, `expo prebuild` и `assembleDebug` в summary Android job. Не кешировать целиком `node_modules` и генерируемую папку `android/`: они создаются из lockfile и конфигурации Expo, а полный кеш усложнил бы проверку актуальности.
 
 ## Последствия
 
